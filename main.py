@@ -2,9 +2,22 @@ from flask import Flask, render_template, request, jsonify, session
 import sqlite3
 import hashlib
 import secrets
+import os
+from datetime import datetime
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
+
+# Настройки загрузки файлов
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'webm', 'pdf', 'doc', 'docx', 'txt', 'zip', 'mp3', 'wav', 'ogg'}
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
+
+# Создаем папку для загрузок
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def get_db():
     conn = sqlite3.connect('database/data_source.db')
@@ -13,6 +26,9 @@ def get_db():
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route('/')
 def index():
@@ -24,45 +40,51 @@ def index():
 
 @app.route('/api/register', methods=['POST'])
 def register():
-    data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
-    display_name = data.get('display_name', username)
-    
-    db = get_db()
-    existing = db.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone()
-    if existing:
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        display_name = data.get('display_name', username)
+        
+        db = get_db()
+        existing = db.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone()
+        if existing:
+            db.close()
+            return jsonify({'error': 'Ник уже занят'}), 400
+        
+        hashed = hash_password(password)
+        db.execute(
+            'INSERT INTO users (username, password, display_name) VALUES (?, ?, ?)',
+            (username, hashed, display_name)
+        )
+        db.commit()
         db.close()
-        return jsonify({'error': 'Ник уже занят'}), 400
-    
-    hashed = hash_password(password)
-    db.execute(
-        'INSERT INTO users (username, password, display_name) VALUES (?, ?, ?)',
-        (username, hashed, display_name)
-    )
-    db.commit()
-    db.close()
-    return jsonify({'status': 'ok'})
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/login', methods=['POST'])
 def login():
-    data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
-    
-    db = get_db()
-    user = db.execute(
-        'SELECT * FROM users WHERE username = ? AND password = ?',
-        (username, hash_password(password))
-    ).fetchone()
-    db.close()
-    
-    if not user:
-        return jsonify({'error': 'Неверный логин или пароль'}), 401
-    
-    session['user_id'] = user['id']
-    session['username'] = user['username']
-    return jsonify({'status': 'ok'})
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        
+        db = get_db()
+        user = db.execute(
+            'SELECT * FROM users WHERE username = ? AND password = ?',
+            (username, hash_password(password))
+        ).fetchone()
+        db.close()
+        
+        if not user:
+            return jsonify({'error': 'Неверный логин или пароль'}), 401
+        
+        session['user_id'] = user['id']
+        session['username'] = user['username']
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -73,139 +95,244 @@ def logout():
 
 @app.route('/api/users', methods=['GET'])
 def get_users():
-    if 'user_id' not in session:
-        return jsonify({'error': 'Не авторизован'}), 401
-    
-    search = request.args.get('search', '')
-    db = get_db()
-    users = db.execute(
-        'SELECT id, username, display_name FROM users WHERE username LIKE ? AND id != ?',
-        (f'%{search}%', session['user_id'])
-    ).fetchall()
-    db.close()
-    return jsonify([dict(u) for u in users])
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        search = request.args.get('search', '')
+        db = get_db()
+        users = db.execute(
+            'SELECT id, username, display_name, bio, avatar FROM users WHERE (username LIKE ? OR display_name LIKE ?) AND id != ?',
+            (f'%{search}%', f'%{search}%', session['user_id'])
+        ).fetchall()
+        db.close()
+        return jsonify([dict(u) for u in users])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # ============ СООБЩЕНИЯ ============
 
 @app.route('/api/send', methods=['POST'])
 def send_message():
-    if 'user_id' not in session:
-        return jsonify({'error': 'Не авторизован'}), 401
-    
-    data = request.get_json()
-    chat_id = data.get('chat_id')
-    chat_type = data.get('chat_type')
-    text = data.get('text')
-    
-    db = get_db()
-    db.execute(
-        'INSERT INTO messages (sender_id, chat_id, chat_type, text) VALUES (?, ?, ?, ?)',
-        (session['user_id'], chat_id, chat_type, text)
-    )
-    db.commit()
-    db.close()
-    return jsonify({'status': 'ok'})
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        data = request.get_json()
+        chat_id = data.get('chat_id')
+        chat_type = data.get('chat_type')
+        text = data.get('text', '')
+        
+        db = get_db()
+        db.execute(
+            'INSERT INTO messages (sender_id, chat_id, chat_type, text) VALUES (?, ?, ?, ?)',
+            (session['user_id'], chat_id, chat_type, text)
+        )
+        db.commit()
+        db.close()
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/messages/<chat_id>', methods=['GET'])
 def get_messages(chat_id):
-    if 'user_id' not in session:
-        return jsonify({'error': 'Не авторизован'}), 401
-    
-    db = get_db()
-    messages = db.execute('''
-        SELECT m.*, u.username, u.display_name 
-        FROM messages m
-        JOIN users u ON m.sender_id = u.id
-        WHERE m.chat_id = ?
-        ORDER BY m.timestamp ASC
-    ''', (chat_id,)).fetchall()
-    db.close()
-    return jsonify([dict(m) for m in messages])
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        db = get_db()
+        messages = db.execute('''
+            SELECT m.*, u.username, u.display_name, u.avatar
+            FROM messages m
+            JOIN users u ON m.sender_id = u.id
+            WHERE m.chat_id = ?
+            ORDER BY m.timestamp ASC
+        ''', (chat_id,)).fetchall()
+        db.close()
+        return jsonify([dict(m) for m in messages])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-# ============ ЧАТЫ (УПРОЩЕННАЯ ВЕРСИЯ) ============
+# ============ ЗАГРУЗКА ФАЙЛОВ ============
+
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        if 'file' not in request.files:
+            return jsonify({'error': 'Нет файла'}), 400
+        
+        file = request.files['file']
+        chat_id = request.form.get('chat_id')
+        chat_type = request.form.get('chat_type')
+        
+        if file.filename == '':
+            return jsonify({'error': 'Файл не выбран'}), 400
+        
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            unique_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
+            file.save(filepath)
+            
+            db = get_db()
+            db.execute(
+                'INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path) VALUES (?, ?, ?, ?, ?)',
+                (session['user_id'], chat_id, chat_type, f"/uploads/{unique_name}", f"/uploads/{unique_name}")
+            )
+            db.commit()
+            db.close()
+            
+            return jsonify({'status': 'ok', 'filepath': f"/uploads/{unique_name}"})
+        
+        return jsonify({'error': 'Недопустимый тип файла'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ============ ПРОФИЛИ ============
+
+@app.route('/api/profile/<int:user_id>', methods=['GET'])
+def get_profile(user_id):
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        db = get_db()
+        user = db.execute(
+            'SELECT id, username, display_name, bio, avatar FROM users WHERE id = ?',
+            (user_id,)
+        ).fetchone()
+        db.close()
+        
+        if not user:
+            return jsonify({'error': 'Пользователь не найден'}), 404
+        
+        return jsonify(dict(user))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/update_profile', methods=['POST'])
+def update_profile():
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        data = request.get_json()
+        display_name = data.get('display_name')
+        bio = data.get('bio')
+        
+        db = get_db()
+        db.execute(
+            'UPDATE users SET display_name = ?, bio = ? WHERE id = ?',
+            (display_name, bio, session['user_id'])
+        )
+        db.commit()
+        db.close()
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ============ ЧАТЫ ============
 
 @app.route('/api/chats', methods=['GET'])
 def get_chats():
-    if 'user_id' not in session:
-        return jsonify({'error': 'Не авторизован'}), 401
-    
-    user_id = session['user_id']
-    db = get_db()
-    
-    # ЛИЧНЫЕ ЧАТЫ (все пользователи, с кем есть сообщения)
-    private_chats = db.execute('''
-        SELECT DISTINCT 
-            CASE 
-                WHEN sender_id = ? THEN 
-                    (SELECT id FROM users WHERE id != ? AND id IN 
-                        (SELECT sender_id FROM messages WHERE chat_type = 'private' AND sender_id != ?)
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        user_id = session['user_id']
+        db = get_db()
+        
+        # Личные чаты
+        private_chats = db.execute('''
+            SELECT DISTINCT 
+                CASE 
+                    WHEN sender_id = ? THEN (
+                        SELECT id FROM users WHERE id != ? AND id IN (
+                            SELECT sender_id FROM messages WHERE chat_type = 'private' AND sender_id != ?
+                        )
                     )
-                ELSE sender_id
-            END as user_id
-        FROM messages 
-        WHERE chat_type = 'private' AND (sender_id = ? OR sender_id IN 
-            (SELECT sender_id FROM messages WHERE chat_type = 'private')
-        )
-    ''', (user_id, user_id, user_id, user_id)).fetchall()
-    
-    # Получаем имена для личных чатов
-    private_result = []
-    for row in private_chats:
-        if row['user_id']:
-            user = db.execute(
-                'SELECT id, username, display_name FROM users WHERE id = ?',
-                (row['user_id'],)
-            ).fetchone()
-            if user:
-                private_result.append(user)
-    
-    # ГРУППЫ
-    groups = db.execute('''
-        SELECT g.id, g.name, g.created_by, u.username as creator
-        FROM groups g
-        JOIN group_members gm ON g.id = gm.group_id
-        JOIN users u ON g.created_by = u.id
-        WHERE gm.user_id = ?
-    ''', (user_id,)).fetchall()
-    
-    db.close()
-    return jsonify({
-        'private': [dict(p) for p in private_result],
-        'groups': [dict(g) for g in groups]
-    })
+                    ELSE sender_id
+                END as user_id
+            FROM messages 
+            WHERE chat_type = 'private' AND (sender_id = ? OR sender_id IN (
+                SELECT sender_id FROM messages WHERE chat_type = 'private'
+            ))
+        ''', (user_id, user_id, user_id, user_id)).fetchall()
+        
+        private_result = []
+        for row in private_chats:
+            if row['user_id']:
+                user = db.execute(
+                    'SELECT id, username, display_name, avatar FROM users WHERE id = ?',
+                    (row['user_id'],)
+                ).fetchone()
+                if user:
+                    private_result.append(user)
+        
+        # Группы
+        groups = db.execute('''
+            SELECT g.id, g.name, g.created_by, u.username as creator
+            FROM groups g
+            JOIN group_members gm ON g.id = gm.group_id
+            JOIN users u ON g.created_by = u.id
+            WHERE gm.user_id = ?
+        ''', (user_id,)).fetchall()
+        
+        db.close()
+        return jsonify({
+            'private': [dict(p) for p in private_result],
+            'groups': [dict(g) for g in groups]
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # ============ ГРУППЫ ============
 
 @app.route('/api/create_group', methods=['POST'])
 def create_group():
-    if 'user_id' not in session:
-        return jsonify({'error': 'Не авторизован'}), 401
-    
-    data = request.get_json()
-    group_name = data.get('name')
-    member_ids = data.get('members', [])
-    
-    db = get_db()
-    cursor = db.execute(
-        'INSERT INTO groups (name, created_by) VALUES (?, ?)',
-        (group_name, session['user_id'])
-    )
-    group_id = cursor.lastrowid
-    
-    db.execute(
-        'INSERT INTO group_members (group_id, user_id) VALUES (?, ?)',
-        (group_id, session['user_id'])
-    )
-    for user_id in member_ids:
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        data = request.get_json()
+        group_name = data.get('name')
+        member_ids = data.get('members', [])
+        
+        db = get_db()
+        cursor = db.execute(
+            'INSERT INTO groups (name, created_by) VALUES (?, ?)',
+            (group_name, session['user_id'])
+        )
+        group_id = cursor.lastrowid
+        
         db.execute(
             'INSERT INTO group_members (group_id, user_id) VALUES (?, ?)',
-            (group_id, user_id)
+            (group_id, session['user_id'])
         )
-    db.commit()
-    db.close()
-    return jsonify({'group_id': group_id, 'group_name': group_name})
+        for user_id in member_ids:
+            db.execute(
+                'INSERT INTO group_members (group_id, user_id) VALUES (?, ?)',
+                (group_id, user_id)
+            )
+        db.commit()
+        db.close()
+        return jsonify({'group_id': group_id, 'group_name': group_name})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ============ ОТДАЧА ФАЙЛОВ ============
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    from flask import send_from_directory
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # ============ ЗАПУСК ============
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    import os
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
