@@ -1,25 +1,66 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Мой Чат</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Чат</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, sans-serif; background: #f5f5f5; height: 100vh; }
+        #app { display: flex; flex-direction: column; height: 100vh; max-width: 1200px; margin: 0 auto; background: white; }
+        #header { background: #007AFF; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        #header h1 { font-size: 20px; margin: 0; }
+        #header button { background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 10px; cursor: pointer; }
+        #main { display: flex; flex: 1; overflow: hidden; }
+        #chat-list { width: 300px; background: #f8f9fa; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
+        #search-area { padding: 10px; border-bottom: 1px solid #ddd; }
+        #search-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 20px; outline: none; }
+        #search-results { background: white; border: 1px solid #ddd; border-radius: 10px; max-height: 200px; overflow-y: auto; display: none; }
+        .result-item { padding: 10px; cursor: pointer; border-bottom: 1px solid #eee; }
+        .result-item:hover { background: #f5f5f5; }
+        #chats { flex: 1; overflow-y: auto; padding: 10px; }
+        #chats h3 { font-size: 12px; color: #999; margin: 10px 0 5px; }
+        .chat-item { padding: 10px; border-radius: 10px; cursor: pointer; margin-bottom: 5px; }
+        .chat-item:hover { background: #f5f5f5; }
+        .chat-item.active { background: #e3f2fd; }
+        #create-group-btn { width: 100%; padding: 10px; background: #007AFF; color: white; border: none; cursor: pointer; }
+        #chat-window { flex: 1; display: flex; flex-direction: column; background: #f8f9fa; }
+        #chat-header { padding: 15px 20px; background: white; border-bottom: 1px solid #ddd; font-weight: bold; flex-shrink: 0; }
+        #messages { flex: 1; padding: 15px; overflow-y: auto; }
+        .message { padding: 10px 15px; border-radius: 15px; margin-bottom: 10px; max-width: 70%; }
+        .message.own { margin-left: auto; background: #daf8cb; }
+        .message.other { background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .msg-username { font-weight: bold; color: #007AFF; margin-right: 10px; }
+        .message.own .msg-username { color: #1a7a3a; }
+        .msg-time { float: right; color: #999; font-size: 12px; margin-left: 15px; }
+        #input-area { display: flex; padding: 15px; background: white; border-top: 1px solid #ddd; flex-shrink: 0; }
+        #input-area input { flex: 1; padding: 12px 15px; border: 1px solid #ddd; border-radius: 25px; font-size: 16px; outline: none; }
+        #input-area input:focus { border-color: #007AFF; }
+        #input-area button { width: 50px; height: 50px; margin-left: 10px; background: #007AFF; color: white; border: none; border-radius: 50%; font-size: 20px; cursor: pointer; }
+        #group-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        #group-modal > div { background: white; padding: 30px; border-radius: 20px; max-width: 400px; width: 90%; }
+        #group-modal input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 10px; }
+        #group-modal button { padding: 10px; border: none; border-radius: 10px; cursor: pointer; margin-top: 5px; }
+        @media (max-width: 768px) {
+            #chat-list { width: 100%; max-height: 40vh; border-right: none; border-bottom: 1px solid #ddd; }
+            #main { flex-direction: column; }
+            .message { max-width: 85%; }
+        }
+    </style>
 </head>
 <body>
     <div id="app">
         <div id="header">
             <h1>💬 Чат</h1>
-            <div id="header-right">
+            <div>
                 <span id="username-display">{{ username }}</span>
                 <button onclick="logout()">Выйти</button>
             </div>
         </div>
-        
         <div id="main">
             <div id="chat-list">
                 <div id="search-area">
-                    <input type="text" id="search-input" placeholder="🔍 Поиск пользователей...">
+                    <input type="text" id="search-input" placeholder="🔍 Поиск">
                     <div id="search-results"></div>
                 </div>
                 <div id="chats">
@@ -30,33 +71,26 @@
                 </div>
                 <button onclick="showCreateGroup()" id="create-group-btn">+ Создать группу</button>
             </div>
-            
             <div id="chat-window">
-                <div id="chat-header">
-                    <span id="current-chat-name">Выберите чат</span>
-                </div>
+                <div id="chat-header"><span id="current-chat-name">Выберите чат</span></div>
                 <div id="messages"></div>
                 <div id="input-area">
-                    <input type="text" id="msg-input" placeholder="Введите сообщение...">
+                    <input type="text" id="msg-input" placeholder="Сообщение...">
                     <button id="send-btn">➤</button>
                 </div>
             </div>
         </div>
     </div>
-
-    <div id="group-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);justify-content:center;align-items:center;z-index:1000;">
-        <div style="background:white;padding:30px;border-radius:20px;max-width:400px;width:90%;max-height:80vh;overflow-y:auto;">
+    <div id="group-modal">
+        <div>
             <h2>Создать группу</h2>
-            <input type="text" id="group-name" placeholder="Название группы" style="width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:10px;">
-            <div id="group-members-list" style="max-height:200px;overflow-y:auto;margin:10px 0;"></div>
-            <button onclick="createGroup()" style="width:100%;padding:10px;background:#007AFF;color:white;border:none;border-radius:10px;cursor:pointer;">Создать</button>
-            <button onclick="closeModal()" style="width:100%;padding:10px;background:#eee;border:none;border-radius:10px;cursor:pointer;margin-top:5px;">Отмена</button>
+            <input type="text" id="group-name" placeholder="Название">
+            <div id="group-members-list"></div>
+            <button onclick="createGroup()" style="width:100%;background:#007AFF;color:white;">Создать</button>
+            <button onclick="closeModal()" style="width:100%;background:#eee;">Отмена</button>
         </div>
     </div>
-
-    <script>
-        window.userId = {{ user_id }};
-    </script>
+    <script>window.userId = {{ user_id }};</script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
