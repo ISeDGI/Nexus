@@ -18,6 +18,8 @@ const recordBtn = document.getElementById('record-btn');
 
 const userId = window.userId || 0;
 
+console.log('🚀 Приложение запущено, userId:', userId);
+
 // ============ АВАТАРЫ ============
 function getAvatarHtml(avatar, name) {
     if (avatar) {
@@ -28,6 +30,7 @@ function getAvatarHtml(avatar, name) {
 
 // ============ ЗАГРУЗКА ЧАТОВ ============
 async function loadChats() {
+    console.log('📋 Загружаем чаты...');
     try {
         const resp = await fetch('/api/chats');
         if (!resp.ok) {
@@ -35,6 +38,7 @@ async function loadChats() {
             return;
         }
         const data = await resp.json();
+        console.log('✅ Чаты загружены:', data);
         
         privateChatsDiv.innerHTML = data.private.map(p => `
             <div class="chat-item" onclick="openChat('private', 'user_${p.id}', '${p.display_name || p.username}', ${p.id})">
@@ -50,12 +54,13 @@ async function loadChats() {
             </div>
         `).join('');
     } catch (error) {
-        console.error('Ошибка загрузки чатов:', error);
+        console.error('❌ Ошибка загрузки чатов:', error);
     }
 }
 
 // ============ ОТКРЫТЬ ЧАТ ============
 function openChat(type, chatId, name, otherUserId = null) {
+    console.log('📂 Открываем чат:', chatId, name);
     currentChatId = chatId;
     currentChatType = type;
     currentChatName = name;
@@ -71,17 +76,29 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
+// ============ ЗАГРУЗКА СООБЩЕНИЙ (ИСПРАВЛЕННАЯ) ============
 async function loadMessages(chatId) {
+    console.log('📨 Загружаем сообщения для:', chatId);
     try {
         const resp = await fetch(`/api/messages/${chatId}`);
+        console.log('📨 Ответ сервера:', resp.status);
+        
         if (!resp.ok) {
-            console.error('Ошибка загрузки сообщений:', resp.status);
-            messagesDiv.innerHTML = `<div style="color:red;text-align:center;padding:20px;">Ошибка загрузки сообщений</div>`;
+            console.error('❌ Ошибка загрузки сообщений:', resp.status);
+            messagesDiv.innerHTML = `<div style="color:red;text-align:center;padding:20px;">Ошибка загрузки сообщений (${resp.status})</div>`;
             return;
         }
-        const messages = await resp.json();
         
+        const messages = await resp.json();
+        console.log('📨 Получено сообщений:', messages.length);
+        console.log('📨 Сообщения:', messages);
+        
+        if (messages.length === 0) {
+            messagesDiv.innerHTML = '<div style="color:#868e96;text-align:center;padding:20px;">Нет сообщений. Напишите что-нибудь!</div>';
+            return;
+        }
+        
+        // ОТОБРАЖАЕМ ВСЕ СООБЩЕНИЯ БЕЗ ФИЛЬТРАЦИИ
         messagesDiv.innerHTML = messages.map(msg => {
             const isOwn = msg.sender_id == userId;
             let content = '';
@@ -98,7 +115,7 @@ async function loadMessages(chatId) {
                     content += `<img src="${fileUrl}" alt="Изображение" loading="lazy">`;
                 } else if (['mp4', 'webm', 'mov'].includes(ext)) {
                     content += `<video src="${fileUrl}" controls preload="metadata"></video>`;
-                } else if (['mp3', 'wav', 'ogg'].includes(ext) && !['mp4'].includes(ext)) {
+                } else if (['mp3', 'wav', 'ogg', 'webm'].includes(ext) && !['mp4'].includes(ext)) {
                     content += `<audio src="${fileUrl}" controls preload="metadata"></audio>`;
                 } else {
                     content += `<a href="${fileUrl}" download class="file-link">📎 Скачать файл</a>`;
@@ -113,8 +130,10 @@ async function loadMessages(chatId) {
         }).join('');
         
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        console.log('✅ Сообщения отображены, всего:', messages.length);
     } catch (error) {
-        console.error('Ошибка загрузки сообщений:', error);
+        console.error('❌ Ошибка загрузки сообщений:', error);
+        messagesDiv.innerHTML = `<div style="color:red;text-align:center;padding:20px;">Ошибка: ${error.message}</div>`;
     }
 }
 
@@ -126,13 +145,17 @@ function escapeHtml(text) {
 
 // ============ ОТПРАВКА ============
 async function sendMessage() {
+    console.log('✉️ Отправка сообщения...');
     if (!currentChatId) {
         alert('Выберите чат');
         return;
     }
     
     const text = msgInput.value.trim();
-    if (!text) return;
+    if (!text) {
+        console.log('✉️ Пустое сообщение');
+        return;
+    }
     
     try {
         const resp = await fetch('/api/send', {
@@ -144,14 +167,19 @@ async function sendMessage() {
                 text: text
             })
         });
+        const data = await resp.json();
+        console.log('✉️ Ответ:', data);
+        
         if (!resp.ok) {
-            console.error('Ошибка отправки:', resp.status);
+            console.error('❌ Ошибка отправки:', data);
             return;
         }
+        
         msgInput.value = '';
+        console.log('✉️ Сообщение отправлено, загружаем обновления...');
         loadMessages(currentChatId);
     } catch (error) {
-        console.error('Ошибка отправки:', error);
+        console.error('❌ Ошибка отправки:', error);
     }
 }
 
@@ -297,6 +325,7 @@ document.addEventListener('click', (e) => {
 
 // ============ НАЧАТЬ ЧАТ ============
 async function startPrivateChat(otherUserId, username) {
+    console.log('👤 Начинаем чат с:', username, 'ID:', otherUserId);
     const chatId = `user_${otherUserId}`;
     openChat('private', chatId, username, otherUserId);
     searchResults.style.display = 'none';
@@ -488,12 +517,22 @@ msgInput.addEventListener('keydown', (e) => {
     }
 });
 
-// ============ ЗАПУСК ============
-console.log('Приложение запущено, userId:', userId);
-loadChats();
-
+// ============ АВТООБНОВЛЕНИЕ ============
 setInterval(() => {
     if (currentChatId) {
+        console.log('🔄 Автообновление:', currentChatId);
         loadMessages(currentChatId);
     }
 }, 3000);
+
+// Принудительное обновление при фокусе на вкладке
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && currentChatId) {
+        console.log('👁️ Вкладка активна, обновляем чат');
+        loadMessages(currentChatId);
+    }
+});
+
+// ============ ЗАПУСК ============
+console.log('🚀 Приложение запущено, userId:', userId);
+loadChats();
