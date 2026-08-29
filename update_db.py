@@ -1,8 +1,14 @@
 import sqlite3
+import os
 
+# Создаем папку database если её нет
+os.makedirs('database', exist_ok=True)
+
+# Подключаемся к базе данных
 conn = sqlite3.connect('database/data_source.db')
 cursor = conn.cursor()
 
+# Создаем таблицу пользователей
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
 )
 ''')
 
+# Создаем таблицу сообщений
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,6 +35,7 @@ CREATE TABLE IF NOT EXISTS messages (
 )
 ''')
 
+# Создаем таблицу групповых чатов
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,6 +46,7 @@ CREATE TABLE IF NOT EXISTS groups (
 )
 ''')
 
+# Создаем таблицу участников групп
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS group_members (
     group_id INTEGER NOT NULL,
@@ -49,6 +58,10 @@ CREATE TABLE IF NOT EXISTS group_members (
 )
 ''')
 
+# Сохраняем изменения и закрываем
 conn.commit()
 conn.close()
+
 print("✅ База данных создана!")
+print("📁 Путь: database/data_source.db")
+print("📋 Таблицы: users, messages, groups, group_members")

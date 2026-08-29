@@ -9,16 +9,20 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
 
+# Настройки загрузки файлов
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'webm', 'pdf', 'doc', 'docx', 'txt', 'zip', 'mp3', 'wav', 'ogg'}
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
+# Создаем папки
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs('database', exist_ok=True)
 
 def get_db():
-    conn = sqlite3.connect('database/data_source.db')
+    db_path = os.path.join(os.path.dirname(__file__), 'database', 'data_source.db')
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
