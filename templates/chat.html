@@ -4,24 +4,264 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Мой Чат</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #ece5dd;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+        }
+        #header {
+            background: #25D366;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        #header h1 { font-size: 20px; margin: 0; }
+        #header-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #header-right button {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        #header-right button:hover { background: rgba(255,255,255,0.3); }
+        #username-display { font-size: 14px; font-weight: 500; }
+        #main {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        #chat-list {
+            width: 280px;
+            background: #f8f9fa;
+            border-right: 1px solid #e9ecef;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+        #search-area {
+            padding: 10px;
+            position: relative;
+            border-bottom: 1px solid #e9ecef;
+        }
+        #search-input {
+            width: 100%;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 20px;
+            background: #f1f3f5;
+            font-size: 14px;
+            outline: none;
+        }
+        #search-input:focus { background: #e9ecef; }
+        #search-results {
+            position: absolute;
+            top: 55px;
+            left: 10px;
+            right: 10px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+            z-index: 100;
+        }
+        .result-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #f1f3f5;
+        }
+        .result-item:hover { background: #f8f9fa; }
+        #chats {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        #chats h3 {
+            font-size: 11px;
+            color: #868e96;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 10px 0 5px;
+        }
+        .chat-item {
+            padding: 10px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .chat-item:hover { background: #f1f3f5; }
+        .chat-item.active { background: #e3f0ff; }
+        .chat-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #25D366;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .chat-name { font-weight: 500; font-size: 14px; }
+        #create-group-btn {
+            width: 100%;
+            padding: 10px;
+            background: #25D366;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            flex-shrink: 0;
+        }
+        #create-group-btn:hover { background: #128C7E; }
+        #chat-window {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #ece5dd;
+        }
+        #chat-header {
+            padding: 10px 16px;
+            background: white;
+            border-bottom: 1px solid #e9ecef;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #chat-header .chat-avatar { width: 35px; height: 35px; font-size: 14px; }
+        #current-chat-name { font-weight: 500; font-size: 16px; }
+        #messages {
+            flex: 1;
+            padding: 15px 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .message {
+            max-width: 70%;
+            padding: 8px 14px;
+            border-radius: 15px;
+            margin-bottom: 8px;
+            word-wrap: break-word;
+            position: relative;
+        }
+        .message.own {
+            align-self: flex-end;
+            background: #DCF8C6;
+            border-bottom-right-radius: 4px;
+        }
+        .message.other {
+            align-self: flex-start;
+            background: white;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .message .msg-username {
+            font-size: 12px;
+            font-weight: 600;
+            color: #128C7E;
+            display: block;
+            margin-bottom: 2px;
+        }
+        .message.own .msg-username { color: #1a7a3a; }
+        .message .msg-text { font-size: 14px; }
+        .message .msg-time {
+            font-size: 10px;
+            color: #868e96;
+            margin-left: 10px;
+            float: right;
+        }
+        #input-area {
+            padding: 10px 15px;
+            background: white;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        #input-area input[type="text"] {
+            flex: 1;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 20px;
+            background: #f1f3f5;
+            font-size: 14px;
+            outline: none;
+        }
+        #input-area input[type="text"]:focus { background: #e9ecef; }
+        #input-area button {
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 50%;
+            background: #25D366;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        #input-area button:hover { background: #128C7E; }
+
+        #group-modal, #profile-modal {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            #chat-list {
+                width: 100%;
+                max-height: 35vh;
+                border-right: none;
+                border-bottom: 1px solid #e9ecef;
+            }
+            #main { flex-direction: column; }
+            .message { max-width: 85%; }
+        }
+    </style>
 </head>
 <body>
     <div id="app">
-        <!-- Шапка -->
         <div id="header">
             <h1>💬 Чат</h1>
             <div id="header-right">
                 <span id="username-display">{{ username }}</span>
-                <button onclick="showProfile()" title="Профиль">👤</button>
                 <button onclick="logout()">Выйти</button>
             </div>
         </div>
         
-        <!-- Основная часть -->
         <div id="main">
-            <!-- Список чатов -->
             <div id="chat-list">
                 <div id="search-area">
                     <input type="text" id="search-input" placeholder="🔍 Поиск пользователей...">
@@ -36,18 +276,13 @@
                 <button onclick="showCreateGroup()" id="create-group-btn">+ Создать группу</button>
             </div>
             
-            <!-- Окно чата -->
             <div id="chat-window">
                 <div id="chat-header">
                     <div class="chat-avatar" id="chat-avatar">👤</div>
                     <span id="current-chat-name">Выберите чат</span>
-                    <button onclick="showChatProfile()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;">ℹ️</button>
                 </div>
                 <div id="messages"></div>
                 <div id="input-area">
-                    <button id="attach-btn" title="Прикрепить файл">📎</button>
-                    <button id="record-btn" title="Голосовое сообщение">🎤</button>
-                    <input type="file" id="file-input" style="display:none" multiple>
                     <input type="text" id="msg-input" placeholder="Введите сообщение...">
                     <button id="send-btn">➤</button>
                 </div>
@@ -55,7 +290,6 @@
         </div>
     </div>
 
-    <!-- Модалка создания группы -->
     <div id="group-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);justify-content:center;align-items:center;z-index:1000;">
         <div style="background:white;padding:30px;border-radius:20px;max-width:400px;width:90%;max-height:80vh;overflow-y:auto;">
             <h2>Создать группу</h2>
@@ -63,15 +297,6 @@
             <div id="group-members-list" style="max-height:200px;overflow-y:auto;margin:10px 0;"></div>
             <button onclick="createGroup()" style="width:100%;padding:10px;background:#25D366;color:white;border:none;border-radius:10px;cursor:pointer;">Создать</button>
             <button onclick="closeModal()" style="width:100%;padding:10px;background:#eee;border:none;border-radius:10px;cursor:pointer;margin-top:5px;">Отмена</button>
-        </div>
-    </div>
-
-    <!-- Модалка профиля -->
-    <div id="profile-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);justify-content:center;align-items:center;z-index:1000;">
-        <div style="background:white;padding:30px;border-radius:20px;max-width:400px;width:90%;">
-            <h2 id="profile-title">Профиль</h2>
-            <div id="profile-content"></div>
-            <button onclick="closeProfile()" style="width:100%;padding:10px;background:#eee;border:none;border-radius:10px;cursor:pointer;margin-top:10px;">Закрыть</button>
         </div>
     </div>
 
