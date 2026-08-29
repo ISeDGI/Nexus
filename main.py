@@ -203,9 +203,31 @@ def send_message():
             return jsonify({'error': 'Не авторизован'}), 401
         
         data = request.get_json()
+        
+        # ===== ЛОГИ ДЛЯ ОТЛАДКИ =====
+        print("=" * 50)
+        print("📨 ПРИШЛО СООБЩЕНИЕ:")
+        print("  chat_id:", data.get('chat_id'))
+        print("  chat_type:", data.get('chat_type'))
+        print("  text:", data.get('text'))
+        print("  sender_id:", session['user_id'])
+        print("  Полные данные:", data)
+        print("=" * 50)
+        # ============================
+        
         chat_id = data.get('chat_id')
-        chat_type = data.get('chat_type')
+        chat_type = data.get('chat_type', 'private')
         text = data.get('text', '')
+        
+        # Проверяем, что chat_id передан
+        if not chat_id:
+            print("❌ ОШИБКА: chat_id не передан!")
+            return jsonify({'error': 'chat_id обязателен'}), 400
+        
+        # Проверяем, что chat_id не равен 'undefined'
+        if chat_id == 'undefined':
+            print("❌ ОШИБКА: chat_id = 'undefined'!")
+            return jsonify({'error': 'chat_id не может быть undefined'}), 400
         
         db = get_db()
         db.execute(
@@ -214,8 +236,11 @@ def send_message():
         )
         db.commit()
         db.close()
+        
+        print("✅ Сообщение сохранено в БД")
         return jsonify({'status': 'ok'})
     except Exception as e:
+        print("❌ ОШИБКА В SEND_MESSAGE:", str(e))
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/messages/<chat_id>', methods=['GET'])
@@ -223,6 +248,8 @@ def get_messages(chat_id):
     try:
         if 'user_id' not in session:
             return jsonify({'error': 'Не авторизован'}), 401
+        
+        print(f"📨 Запрос сообщений для чата: {chat_id}")
         
         db = get_db()
         messages = db.execute('''
@@ -233,8 +260,11 @@ def get_messages(chat_id):
             ORDER BY m.timestamp ASC
         ''', (chat_id,)).fetchall()
         db.close()
+        
+        print(f"✅ Найдено сообщений: {len(messages)}")
         return jsonify([dict(m) for m in messages])
     except Exception as e:
+        print("❌ ОШИБКА В GET_MESSAGES:", str(e))
         return jsonify({'error': str(e)}), 500
 
 # ============ ЗАГРУЗКА ФАЙЛОВ ============
@@ -250,7 +280,9 @@ def upload_file():
         
         file = request.files['file']
         chat_id = request.form.get('chat_id')
-        chat_type = request.form.get('chat_type')
+        chat_type = request.form.get('chat_type', 'private')
+        
+        print(f"📎 Загрузка файла: {file.filename}, chat_id: {chat_id}")
         
         if file.filename == '':
             return jsonify({'error': 'Файл не выбран'}), 400
@@ -273,6 +305,7 @@ def upload_file():
         
         return jsonify({'error': 'Недопустимый тип файла'}), 400
     except Exception as e:
+        print("❌ ОШИБКА В UPLOAD:", str(e))
         return jsonify({'error': str(e)}), 500
 
 # ============ ЧАТЫ ============
@@ -326,6 +359,7 @@ def get_chats():
             'groups': [dict(g) for g in groups]
         })
     except Exception as e:
+        print("❌ ОШИБКА В GET_CHATS:", str(e))
         return jsonify({'error': str(e)}), 500
 
 # ============ ГРУППЫ ============
@@ -360,6 +394,7 @@ def create_group():
         db.close()
         return jsonify({'group_id': group_id, 'group_name': group_name})
     except Exception as e:
+        print("❌ ОШИБКА В CREATE_GROUP:", str(e))
         return jsonify({'error': str(e)}), 500
 
 # ============ ЗАПУСК ============

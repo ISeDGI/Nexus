@@ -61,6 +61,7 @@ async function loadChats() {
 // ============ ОТКРЫТЬ ЧАТ ============
 function openChat(type, chatId, name, otherUserId = null) {
     console.log('📂 Открываем чат:', chatId, name);
+    console.log('📂 otherUserId:', otherUserId);
     currentChatId = chatId;
     currentChatType = type;
     currentChatName = name;
@@ -76,7 +77,7 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ (ИСПРАВЛЕННАЯ) ============
+// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
 async function loadMessages(chatId) {
     console.log('📨 Загружаем сообщения для:', chatId);
     try {
@@ -146,6 +147,10 @@ function escapeHtml(text) {
 // ============ ОТПРАВКА ============
 async function sendMessage() {
     console.log('✉️ Отправка сообщения...');
+    console.log('✉️ currentChatId:', currentChatId);
+    console.log('✉️ currentChatType:', currentChatType);
+    console.log('✉️ userId:', userId);
+    
     if (!currentChatId) {
         alert('Выберите чат');
         return;
@@ -157,18 +162,21 @@ async function sendMessage() {
         return;
     }
     
+    const payload = {
+        chat_id: currentChatId,
+        chat_type: currentChatType || 'private',
+        text: text
+    };
+    console.log('✉️ Отправляемые данные:', payload);
+    
     try {
         const resp = await fetch('/api/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: currentChatId,
-                chat_type: currentChatType || 'private',
-                text: text
-            })
+            body: JSON.stringify(payload)
         });
         const data = await resp.json();
-        console.log('✉️ Ответ:', data);
+        console.log('✉️ Ответ сервера:', data);
         
         if (!resp.ok) {
             console.error('❌ Ошибка отправки:', data);
@@ -335,6 +343,7 @@ document.addEventListener('click', (e) => {
 async function startPrivateChat(otherUserId, username) {
     console.log('👤 Начинаем чат с:', username, 'ID:', otherUserId);
     const chatId = `user_${otherUserId}`;
+    console.log('👤 chatId:', chatId);
     openChat('private', chatId, username, otherUserId);
     searchResults.style.display = 'none';
     searchInput.value = '';
