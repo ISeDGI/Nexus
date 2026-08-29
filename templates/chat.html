@@ -47,7 +47,7 @@
                 <div id="input-area">
                     <button id="attach-btn" title="Прикрепить файл">📎</button>
                     <button id="record-btn" title="Голосовое сообщение">🎤</button>
-                    <input type="file" id="file-input" style="display:none" multiple accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip,.mp3,.wav,.ogg">
+                    <input type="file" id="file-input" style="display:none" multiple>
                     <input type="text" id="msg-input" placeholder="Введите сообщение...">
                     <button id="send-btn">➤</button>
                 </div>
@@ -61,7 +61,7 @@
             <h2>Создать группу</h2>
             <input type="text" id="group-name" placeholder="Название группы" style="width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:10px;">
             <div id="group-members-list" style="max-height:200px;overflow-y:auto;margin:10px 0;"></div>
-            <button onclick="createGroup()" style="width:100%;padding:10px;background:#0084ff;color:white;border:none;border-radius:10px;cursor:pointer;">Создать</button>
+            <button onclick="createGroup()" style="width:100%;padding:10px;background:#25D366;color:white;border:none;border-radius:10px;cursor:pointer;">Создать</button>
             <button onclick="closeModal()" style="width:100%;padding:10px;background:#eee;border:none;border-radius:10px;cursor:pointer;margin-top:5px;">Отмена</button>
         </div>
     </div>
@@ -74,9 +74,6 @@
             <button onclick="closeProfile()" style="width:100%;padding:10px;background:#eee;border:none;border-radius:10px;cursor:pointer;margin-top:10px;">Закрыть</button>
         </div>
     </div>
-
-    <!-- Аудио-плеер для голосовых -->
-    <audio id="audio-player" style="display:none;"></audio>
 
     <script>
         window.userId = {{ user_id }};

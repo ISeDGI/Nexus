@@ -15,9 +15,16 @@ const usernameDisplay = document.getElementById('username-display');
 const fileInput = document.getElementById('file-input');
 const attachBtn = document.getElementById('attach-btn');
 const recordBtn = document.getElementById('record-btn');
-const audioPlayer = document.getElementById('audio-player');
 
 const userId = window.userId || 0;
+
+// ============ АВАТАРЫ ============
+function getAvatarHtml(avatar, name) {
+    if (avatar) {
+        return `<img src="${avatar}" alt="${name}">`;
+    }
+    return (name || '?')[0].toUpperCase();
+}
 
 // ============ ЗАГРУЗКА ЧАТОВ ============
 async function loadChats() {
@@ -31,7 +38,7 @@ async function loadChats() {
         
         privateChatsDiv.innerHTML = data.private.map(p => `
             <div class="chat-item" onclick="openChat('private', 'user_${p.id}', '${p.display_name || p.username}', ${p.id})">
-                <div class="chat-avatar">${(p.display_name || p.username)[0].toUpperCase()}</div>
+                <div class="chat-avatar">${getAvatarHtml(p.avatar, p.display_name || p.username)}</div>
                 <span class="chat-name">${p.display_name || p.username}</span>
             </div>
         `).join('');
@@ -79,12 +86,10 @@ async function loadMessages(chatId) {
             const isOwn = msg.sender_id == userId;
             let content = '';
             
-            // Текст
             if (msg.text) {
                 content = `<div class="msg-text">${escapeHtml(msg.text)}</div>`;
             }
             
-            // Файлы
             if (msg.file_path) {
                 const ext = msg.file_path.split('.').pop().toLowerCase();
                 const fileUrl = msg.file_path;
@@ -93,7 +98,7 @@ async function loadMessages(chatId) {
                     content += `<img src="${fileUrl}" alt="Изображение" loading="lazy">`;
                 } else if (['mp4', 'webm', 'mov'].includes(ext)) {
                     content += `<video src="${fileUrl}" controls preload="metadata"></video>`;
-                } else if (['mp3', 'wav', 'ogg', 'webm'].includes(ext) && !['mp4'].includes(ext)) {
+                } else if (['mp3', 'wav', 'ogg'].includes(ext) && !['mp4'].includes(ext)) {
                     content += `<audio src="${fileUrl}" controls preload="metadata"></audio>`;
                 } else {
                     content += `<a href="${fileUrl}" download class="file-link">📎 Скачать файл</a>`;
@@ -113,14 +118,13 @@ async function loadMessages(chatId) {
     }
 }
 
-// ============ ESCAPE HTML ============
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
-// ============ ОТПРАВКА СООБЩЕНИЯ ============
+// ============ ОТПРАВКА ============
 async function sendMessage() {
     if (!currentChatId) {
         alert('Выберите чат');
@@ -151,7 +155,7 @@ async function sendMessage() {
     }
 }
 
-// ============ ЗАГРУЗКА ФАЙЛОВ ============
+// ============ ФАЙЛЫ ============
 attachBtn.addEventListener('click', () => fileInput.click());
 
 fileInput.addEventListener('change', async () => {
@@ -177,8 +181,6 @@ fileInput.addEventListener('change', async () => {
             });
             if (resp.ok) {
                 loadMessages(currentChatId);
-            } else {
-                console.error('Ошибка загрузки файла');
             }
         } catch (error) {
             console.error('Ошибка загрузки:', error);
@@ -187,7 +189,7 @@ fileInput.addEventListener('change', async () => {
     fileInput.value = '';
 });
 
-// ============ ГОЛОСОВЫЕ СООБЩЕНИЯ ============
+// ============ ГОЛОСОВЫЕ ============
 let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
@@ -255,7 +257,7 @@ function stopRecording() {
     }
 }
 
-// ============ ПОИСК ПОЛЬЗОВАТЕЛЕЙ ============
+// ============ ПОИСК ============
 searchInput.addEventListener('input', async () => {
     const query = searchInput.value.trim();
     
@@ -275,7 +277,7 @@ searchInput.addEventListener('input', async () => {
             searchResults.innerHTML = users.map(u => `
                 <div class="result-item" onclick="startPrivateChat(${u.id}, '${u.username}')">
                     <div style="display:flex;align-items:center;gap:10px;">
-                        <div class="chat-avatar" style="width:30px;height:30px;font-size:14px;">${(u.display_name || u.username)[0].toUpperCase()}</div>
+                        <div class="chat-avatar" style="width:30px;height:30px;font-size:14px;">${getAvatarHtml(u.avatar, u.display_name || u.username)}</div>
                         <div><strong>${u.display_name || u.username}</strong><br><span style="font-size:12px;color:#868e96;">@${u.username}</span></div>
                     </div>
                 </div>
@@ -287,14 +289,13 @@ searchInput.addEventListener('input', async () => {
     }
 });
 
-// ============ ЗАКРЫТЬ ПОИСК ============
 document.addEventListener('click', (e) => {
     if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
         searchResults.style.display = 'none';
     }
 });
 
-// ============ НАЧАТЬ ЛИЧНЫЙ ЧАТ ============
+// ============ НАЧАТЬ ЧАТ ============
 async function startPrivateChat(otherUserId, username) {
     const chatId = `user_${otherUserId}`;
     openChat('private', chatId, username, otherUserId);
@@ -318,7 +319,11 @@ async function showProfile() {
         
         content.innerHTML = `
             <div style="text-align:center;margin-bottom:20px;">
-                <div class="chat-avatar" style="width:80px;height:80px;font-size:32px;margin:0 auto;">${(user.display_name || user.username)[0].toUpperCase()}</div>
+                <div class="chat-avatar" style="width:80px;height:80px;font-size:32px;margin:0 auto;cursor:pointer;" onclick="document.getElementById('avatar-input').click()">
+                    ${getAvatarHtml(user.avatar, user.display_name || user.username)}
+                </div>
+                <input type="file" id="avatar-input" style="display:none" accept="image/png,image/jpeg,image/gif,image/webp" onchange="uploadAvatar(this.files[0])">
+                <div style="font-size:12px;color:#868e96;margin-top:5px;">Нажми на аватар, чтобы сменить</div>
             </div>
             <div style="margin-bottom:15px;">
                 <label style="font-weight:500;display:block;margin-bottom:5px;">Отображаемое имя</label>
@@ -328,10 +333,35 @@ async function showProfile() {
                 <label style="font-weight:500;display:block;margin-bottom:5px;">О себе</label>
                 <textarea id="profile-bio" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;resize:vertical;min-height:60px;">${user.bio || ''}</textarea>
             </div>
-            <button onclick="saveProfile()" style="width:100%;padding:10px;background:#0084ff;color:white;border:none;border-radius:10px;cursor:pointer;">Сохранить</button>
+            <button onclick="saveProfile()" style="width:100%;padding:10px;background:#25D366;color:white;border:none;border-radius:10px;cursor:pointer;">Сохранить</button>
         `;
     } catch (error) {
         content.innerHTML = '<div style="color:red;">Ошибка загрузки профиля</div>';
+    }
+}
+
+async function uploadAvatar(file) {
+    if (!file) return;
+    
+    const formData = new FormData();
+    formData.append('avatar', file);
+    
+    try {
+        const resp = await fetch('/api/upload_avatar', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            alert('Аватар обновлён!');
+            closeProfile();
+            loadChats();
+        } else {
+            alert(data.error || 'Ошибка загрузки');
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки аватара:', error);
+        alert('Ошибка загрузки');
     }
 }
 
@@ -379,7 +409,9 @@ async function showChatProfile() {
         
         content.innerHTML = `
             <div style="text-align:center;margin-bottom:20px;">
-                <div class="chat-avatar" style="width:80px;height:80px;font-size:32px;margin:0 auto;">${(user.display_name || user.username)[0].toUpperCase()}</div>
+                <div class="chat-avatar" style="width:80px;height:80px;font-size:32px;margin:0 auto;">
+                    ${getAvatarHtml(user.avatar, user.display_name || user.username)}
+                </div>
                 <h3>${user.display_name || user.username}</h3>
                 <div style="color:#868e96;font-size:14px;">@${user.username}</div>
                 <div style="margin-top:10px;color:#495057;">${user.bio || 'Пока ничего о себе не рассказал'}</div>

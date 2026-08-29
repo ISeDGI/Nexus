@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, send_from_directory
 import sqlite3
 import hashlib
 import secrets
@@ -35,6 +35,10 @@ def index():
     if 'user_id' not in session:
         return render_template('login.html')
     return render_template('chat.html', user_id=session['user_id'], username=session['username'])
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # ============ АВТОРИЗАЦИЯ ============
 
@@ -102,11 +106,91 @@ def get_users():
         search = request.args.get('search', '')
         db = get_db()
         users = db.execute(
-            'SELECT id, username, display_name, bio, avatar FROM users WHERE (username LIKE ? OR display_name LIKE ?) AND id != ?',
+            '''SELECT id, username, display_name, bio, avatar 
+               FROM users 
+               WHERE (username LIKE ? OR display_name LIKE ?) AND id != ?''',
             (f'%{search}%', f'%{search}%', session['user_id'])
         ).fetchall()
         db.close()
         return jsonify([dict(u) for u in users])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ============ ПРОФИЛИ ============
+
+@app.route('/api/profile/<int:user_id>', methods=['GET'])
+def get_profile(user_id):
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        db = get_db()
+        user = db.execute(
+            'SELECT id, username, display_name, bio, avatar FROM users WHERE id = ?',
+            (user_id,)
+        ).fetchone()
+        db.close()
+        
+        if not user:
+            return jsonify({'error': 'Пользователь не найден'}), 404
+        
+        return jsonify(dict(user))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/update_profile', methods=['POST'])
+def update_profile():
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        data = request.get_json()
+        display_name = data.get('display_name')
+        bio = data.get('bio')
+        
+        db = get_db()
+        db.execute(
+            'UPDATE users SET display_name = ?, bio = ? WHERE id = ?',
+            (display_name, bio, session['user_id'])
+        )
+        db.commit()
+        db.close()
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/upload_avatar', methods=['POST'])
+def upload_avatar():
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        if 'avatar' not in request.files:
+            return jsonify({'error': 'Нет файла'}), 400
+        
+        file = request.files['avatar']
+        if file.filename == '':
+            return jsonify({'error': 'Файл не выбран'}), 400
+        
+        allowed = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+        ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+        if ext not in allowed:
+            return jsonify({'error': 'Недопустимый формат. Используйте PNG, JPG, GIF или WEBP'}), 400
+        
+        filename = secure_filename(file.filename)
+        unique_name = f"avatar_{session['user_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
+        file.save(filepath)
+        
+        db = get_db()
+        db.execute(
+            'UPDATE users SET avatar = ? WHERE id = ?',
+            (f"/uploads/{unique_name}", session['user_id'])
+        )
+        db.commit()
+        db.close()
+        
+        return jsonify({'status': 'ok', 'avatar': f"/uploads/{unique_name}"})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -191,49 +275,6 @@ def upload_file():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ============ ПРОФИЛИ ============
-
-@app.route('/api/profile/<int:user_id>', methods=['GET'])
-def get_profile(user_id):
-    try:
-        if 'user_id' not in session:
-            return jsonify({'error': 'Не авторизован'}), 401
-        
-        db = get_db()
-        user = db.execute(
-            'SELECT id, username, display_name, bio, avatar FROM users WHERE id = ?',
-            (user_id,)
-        ).fetchone()
-        db.close()
-        
-        if not user:
-            return jsonify({'error': 'Пользователь не найден'}), 404
-        
-        return jsonify(dict(user))
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/update_profile', methods=['POST'])
-def update_profile():
-    try:
-        if 'user_id' not in session:
-            return jsonify({'error': 'Не авторизован'}), 401
-        
-        data = request.get_json()
-        display_name = data.get('display_name')
-        bio = data.get('bio')
-        
-        db = get_db()
-        db.execute(
-            'UPDATE users SET display_name = ?, bio = ? WHERE id = ?',
-            (display_name, bio, session['user_id'])
-        )
-        db.commit()
-        db.close()
-        return jsonify({'status': 'ok'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
 # ============ ЧАТЫ ============
 
 @app.route('/api/chats', methods=['GET'])
@@ -245,7 +286,6 @@ def get_chats():
         user_id = session['user_id']
         db = get_db()
         
-        # Личные чаты
         private_chats = db.execute('''
             SELECT DISTINCT 
                 CASE 
@@ -272,7 +312,6 @@ def get_chats():
                 if user:
                     private_result.append(user)
         
-        # Группы
         groups = db.execute('''
             SELECT g.id, g.name, g.created_by, u.username as creator
             FROM groups g
@@ -322,13 +361,6 @@ def create_group():
         return jsonify({'group_id': group_id, 'group_name': group_name})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-# ============ ОТДАЧА ФАЙЛОВ ============
-
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    from flask import send_from_directory
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # ============ ЗАПУСК ============
 
