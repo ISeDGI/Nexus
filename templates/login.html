@@ -62,9 +62,8 @@
             document.getElementById('register-success').textContent = '';
         }
 
-        // === ВХОД (через addEventListener) ===
+        // === ВХОД ===
         document.getElementById('login-btn').addEventListener('click', function(e) {
-            // Полностью блокируем стандартное поведение
             e.preventDefault();
             e.stopPropagation();
             
@@ -90,9 +89,10 @@
             .then(r => r.json())
             .then(data => {
                 console.log('Ответ сервера:', data);
-                if (data.status === 'ok') {
-                    console.log('✅ Успех! Переход на /');
-                    window.location.href = '/';
+                if (data.status === 'ok' && data.user_id) {
+                    console.log('✅ Успех! user_id:', data.user_id);
+                    // Перенаправляем с user_id в URL
+                    window.location.href = '/?user_id=' + data.user_id;
                 } else {
                     errorEl.textContent = data.error || 'Неверный логин или пароль';
                     errorEl.style.color = 'red';
@@ -149,7 +149,7 @@
             });
         });
 
-        // === ОБРАБОТКА ENTER ===
+        // === ENTER ===
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 const activeForm = document.querySelector('.form.active');
