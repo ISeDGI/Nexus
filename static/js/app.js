@@ -106,7 +106,6 @@ let unreadCounts = {};
 function updateUnreadBadge(chatId, count) {
     console.log('🔴 updateUnreadBadge:', chatId, '=', count);
     
-    // Если это открытый чат — НЕ ПОКАЗЫВАЕМ
     if (chatId === currentChatId) {
         console.log('⛔️ Пропускаем бейдж для открытого чата:', chatId);
         const chatItem = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
@@ -162,7 +161,6 @@ async function calculateUnreadCounts() {
                 
                 const lastReadId = lastReadMessageIds[chatId] || 0;
                 
-                // Считаем только сообщения от ДРУГИХ пользователей с ID > последнего прочитанного
                 const unread = messages.filter(msg => 
                     msg.sender_id != userId && msg.id > lastReadId
                 );
@@ -241,11 +239,8 @@ async function loadChats(force = false) {
 function openChat(type, chatId, name, otherUserId = null) {
     console.log('📂 Открываем чат:', chatId);
     
-    // Если переключаемся с другого чата — обновляем lastRead для старого чата
     if (currentChatId && currentChatId !== chatId) {
         console.log('🔄 Переключение с', currentChatId, 'на', chatId);
-        // Запоминаем, что старый чат прочитан
-        // Но НЕ обновляем lastReadId для старого чата, чтобы бейдж мог появиться
     }
     
     currentChatId = chatId;
@@ -256,21 +251,17 @@ function openChat(type, chatId, name, otherUserId = null) {
     
     updateChatHeaderAvatar(otherUserId);
     
-    // При открытии чата — сбрасываем бейдж и обновляем lastReadId
     delete unreadCounts[chatId];
     updateUnreadBadge(chatId, 0);
     
-    // Получаем последний ID сообщения и запоминаем как прочитанный
     fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`)
         .then(r => r.json())
         .then(messages => {
             if (messages.length > 0) {
                 const lastId = messages[messages.length - 1].id;
-                // ОБНОВЛЯЕМ lastReadId ТОЛЬКО ДЛЯ ОТКРЫТОГО ЧАТА
                 lastReadMessageIds[chatId] = lastId;
                 console.log(`📖 lastRead для открытого чата ${chatId} установлен на ${lastId}`);
             }
-            // Пересчитываем счётчики для других чатов
             setTimeout(() => calculateUnreadCounts(), 300);
         })
         .catch(e => console.error('Ошибка:', e));
@@ -306,12 +297,10 @@ async function loadMessages(chatId) {
             const unread = newMessages.filter(msg => msg.sender_id != userId);
             
             if (unread.length > 0) {
-                // Если чат НЕ открыт — увеличиваем счётчик
                 if (currentChatId !== chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                 } else {
-                    // Если чат открыт — обновляем lastReadId
                     const lastId = messages[messages.length - 1].id;
                     lastReadMessageIds[chatId] = lastId;
                     console.log(`📖 lastRead обновлён для открытого чата ${chatId} : ${lastId}`);
@@ -617,6 +606,7 @@ function closeModal() {
     document.getElementById('group-name').value = '';
 }
 
+// ============ ПРОФИЛЬ (СО СМЕНОЙ ПАРОЛЯ) ============
 async function showProfile() {
     const modal = document.getElementById('profile-modal');
     const content = document.getElementById('profile-content');
@@ -644,6 +634,12 @@ async function showProfile() {
                 <label style="font-weight:500;display:block;margin-bottom:5px;">О себе</label>
                 <textarea id="profile-bio" style="width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:10px;resize:vertical;min-height:60px;">${user.bio || ''}</textarea>
             </div>
+            <div style="border-top:1px solid #eee;padding-top:15px;margin-top:15px;">
+                <label style="font-weight:500;display:block;margin-bottom:5px;">Смена пароля</label>
+                <input type="password" id="profile-old-password" placeholder="Старый пароль" style="width:100%;padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:10px;">
+                <input type="password" id="profile-new-password" placeholder="Новый пароль (мин. 4 символа)" style="width:100%;padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:10px;">
+                <button onclick="changePassword()" style="width:100%;padding:10px;background:#007AFF;color:white;border:none;border-radius:10px;cursor:pointer;margin-top:5px;">Сменить пароль</button>
+            </div>
             <button onclick="saveProfile()" style="width:100%;padding:10px;background:#007AFF;color:white;border:none;border-radius:10px;cursor:pointer;margin-top:10px;">Сохранить</button>
         `;
     } catch (error) {
@@ -651,6 +647,92 @@ async function showProfile() {
     }
 }
 
+// ============ СМЕНА ПАРОЛЯ ============
+async function changePassword() {
+    const oldPassword = document.getElementById('profile-old-password').value.trim();
+    const newPassword = document.getElementById('profile-new-password').value.trim();
+    
+    if (!oldPassword || !newPassword) {
+        alert('Заполните все поля');
+        return;
+    }
+    
+    if (newPassword.length < 4) {
+        alert('Новый пароль должен быть минимум 4 символа');
+        return;
+    }
+    
+    try {
+        const resp = await fetch(`/api/change_password?user_id=${userId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            alert('Пароль успешно изменён!');
+            document.getElementById('profile-old-password').value = '';
+            document.getElementById('profile-new-password').value = '';
+            closeProfile();
+        } else {
+            alert(data.error || 'Ошибка смены пароля');
+        }
+    } catch (error) {
+        console.error('Ошибка смены пароля:', error);
+        alert('Ошибка соединения');
+    }
+}
+
+// ============ СОХРАНЕНИЕ ПРОФИЛЯ ============
+async function saveProfile() {
+    const name = document.getElementById('profile-name').value.trim();
+    const bio = document.getElementById('profile-bio').value.trim();
+    
+    try {
+        const resp = await fetch(`/api/update_profile?user_id=${userId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ display_name: name, bio })
+        });
+        if (resp.ok) {
+            alert('Профиль обновлён!');
+            closeProfile();
+            await loadChats(true);
+        }
+    } catch (error) {
+        console.error('Ошибка сохранения:', error);
+    }
+}
+
+// ============ ЗАГРУЗКА АВАТАРА ============
+async function uploadAvatar(file) {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('avatar', file);
+    
+    try {
+        const resp = await fetch(`/api/upload_avatar?user_id=${userId}`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            alert('Аватар обновлён!');
+            await loadChats(true);
+            if (currentChatUserId) {
+                await updateChatHeaderAvatar(currentChatUserId);
+            }
+            closeProfile();
+        } else {
+            alert(data.error || 'Ошибка загрузки');
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки аватара:', error);
+        alert('Ошибка загрузки');
+    }
+}
+
+// ============ ПРОФИЛЬ СОБЕСЕДНИКА ============
 async function showUserProfile(userIdToShow) {
     if (!userIdToShow) {
         alert('Выберите чат');
@@ -685,53 +767,6 @@ async function showUserProfile(userIdToShow) {
     }
 }
 
-async function uploadAvatar(file) {
-    if (!file) return;
-    const formData = new FormData();
-    formData.append('avatar', file);
-    
-    try {
-        const resp = await fetch(`/api/upload_avatar?user_id=${userId}`, {
-            method: 'POST',
-            body: formData
-        });
-        const data = await resp.json();
-        if (resp.ok) {
-            alert('Аватар обновлён!');
-            await loadChats(true);
-            if (currentChatUserId) {
-                await updateChatHeaderAvatar(currentChatUserId);
-            }
-            closeProfile();
-        } else {
-            alert(data.error || 'Ошибка загрузки');
-        }
-    } catch (error) {
-        console.error('Ошибка загрузки аватара:', error);
-        alert('Ошибка загрузки');
-    }
-}
-
-async function saveProfile() {
-    const name = document.getElementById('profile-name').value.trim();
-    const bio = document.getElementById('profile-bio').value.trim();
-    
-    try {
-        const resp = await fetch(`/api/update_profile?user_id=${userId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ display_name: name, bio })
-        });
-        if (resp.ok) {
-            alert('Профиль обновлён!');
-            closeProfile();
-            await loadChats(true);
-        }
-    } catch (error) {
-        console.error('Ошибка сохранения:', error);
-    }
-}
-
 function closeProfile() {
     document.getElementById('profile-modal').style.display = 'none';
 }
@@ -756,7 +791,6 @@ setInterval(function() {
 
 setInterval(function() {
     loadChats(false);
-    // Пересчитываем счётчики
     setTimeout(() => calculateUnreadCounts(), 500);
 }, 10000);
 
@@ -783,7 +817,6 @@ console.log('🚀 Запуск Nexus, userId:', userId);
 // ============ ПЕРВИЧНЫЙ ЗАПУСК ============
 (async function init() {
     await loadChats(true);
-    // Задержка перед первым подсчётом
     setTimeout(() => calculateUnreadCounts(), 1000);
     console.log('✅ Готово!');
 })();
