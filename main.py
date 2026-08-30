@@ -9,14 +9,16 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
 
-# Настройки загрузки
+# ========== НАСТРОЙКИ ЗАГРУЗКИ ==========
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'webm', 'pdf', 'doc', 'docx', 'txt', 'zip', 'mp3', 'wav', 'ogg'}
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
 
+# СОЗДАЁМ ПАПКУ ПРИ ЗАПУСКЕ
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+print(f"📁 Папка загрузок: {os.path.abspath(UPLOAD_FOLDER)}")
 
 def get_db():
     db_path = os.path.join(os.path.dirname(__file__), 'database', 'data_source.db')
@@ -48,6 +50,8 @@ def index():
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+# ============ ВСЕ API ============
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -121,8 +125,6 @@ def get_users():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ============ ПРОФИЛЬ ============
-
 @app.route('/api/profile/<int:user_id>', methods=['GET'])
 def get_profile(user_id):
     try:
@@ -142,7 +144,6 @@ def get_profile(user_id):
         
         return jsonify(dict(user))
     except Exception as e:
-        print(f"❌ Ошибка в get_profile: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/update_profile', methods=['POST'])
@@ -165,7 +166,6 @@ def update_profile():
         db.close()
         return jsonify({'status': 'ok'})
     except Exception as e:
-        print(f"❌ Ошибка в update_profile: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/upload_avatar', methods=['POST'])
@@ -185,7 +185,7 @@ def upload_avatar():
         allowed = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
         ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
         if ext not in allowed:
-            return jsonify({'error': 'Недопустимый формат. Используйте PNG, JPG, GIF или WEBP'}), 400
+            return jsonify({'error': 'Недопустимый формат'}), 400
         
         filename = secure_filename(file.filename)
         unique_name = f"avatar_{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
@@ -202,10 +202,7 @@ def upload_avatar():
         
         return jsonify({'status': 'ok', 'avatar': f"/uploads/{unique_name}"})
     except Exception as e:
-        print(f"❌ Ошибка в upload_avatar: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
-# ============ СООБЩЕНИЯ ============
 
 @app.route('/api/send', methods=['POST'])
 def send_message():
@@ -223,7 +220,6 @@ def send_message():
             return jsonify({'error': 'chat_id обязателен'}), 400
         
         db = get_db()
-        
         db.execute(
             'INSERT INTO messages (sender_id, chat_id, chat_type, text) VALUES (?, ?, ?, ?)',
             (user_id, chat_id, chat_type, text)
@@ -240,52 +236,68 @@ def send_message():
         db.close()
         return jsonify({'status': 'ok'})
     except Exception as e:
-        print(f"❌ Ошибка в send_message: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     try:
+        print("="*50)
+        print("📨 ПОЛУЧЕН ЗАПРОС НА ЗАГРУЗКУ ФАЙЛА")
+        
         user_id = request.args.get('user_id') or session.get('user_id')
         if not user_id:
+            print("❌ Нет user_id")
             return jsonify({'error': 'Не авторизован'}), 401
         
         if 'file' not in request.files:
+            print("❌ Нет файла в запросе")
             return jsonify({'error': 'Нет файла'}), 400
         
         file = request.files['file']
         chat_id = request.form.get('chat_id')
         chat_type = request.form.get('chat_type', 'private')
         
+        print(f"📎 Файл: {file.filename}")
+        print(f"📎 chat_id: {chat_id}")
+        print(f"📎 user_id: {user_id}")
+        
         if file.filename == '':
+            print("❌ Пустое имя файла")
             return jsonify({'error': 'Файл не выбран'}), 400
         
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            unique_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
-            file.save(filepath)
-            
-            db = get_db()
+        if not allowed_file(file.filename):
+            print(f"❌ Недопустимый тип файла: {file.filename}")
+            return jsonify({'error': 'Недопустимый тип файла'}), 400
+        
+        # Сохраняем файл
+        filename = secure_filename(file.filename)
+        unique_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
+        file.save(filepath)
+        print(f"✅ Файл сохранён: {filepath}")
+        
+        # Сохраняем в БД
+        db = get_db()
+        db.execute(
+            'INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path) VALUES (?, ?, ?, ?, ?)',
+            (user_id, chat_id, chat_type, f"/uploads/{unique_name}", f"/uploads/{unique_name}")
+        )
+        
+        if chat_type == 'private' and chat_id.startswith('user_'):
+            reverse_chat_id = f'user_{user_id}'
             db.execute(
                 'INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path) VALUES (?, ?, ?, ?, ?)',
-                (user_id, chat_id, chat_type, f"/uploads/{unique_name}", f"/uploads/{unique_name}")
+                (user_id, reverse_chat_id, chat_type, f"/uploads/{unique_name}", f"/uploads/{unique_name}")
             )
-            
-            if chat_type == 'private' and chat_id.startswith('user_'):
-                reverse_chat_id = f'user_{user_id}'
-                db.execute(
-                    'INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path) VALUES (?, ?, ?, ?, ?)',
-                    (user_id, reverse_chat_id, chat_type, f"/uploads/{unique_name}", f"/uploads/{unique_name}")
-                )
-            
-            db.commit()
-            db.close()
-            return jsonify({'status': 'ok', 'filepath': f"/uploads/{unique_name}"})
         
-        return jsonify({'error': 'Недопустимый тип файла'}), 400
+        db.commit()
+        db.close()
+        print("✅ Сообщение с файлом сохранено в БД")
+        print("="*50)
+        
+        return jsonify({'status': 'ok', 'filepath': f"/uploads/{unique_name}"})
     except Exception as e:
-        print(f"❌ Ошибка в upload_file: {str(e)}")
+        print(f"❌ ОШИБКА В UPLOAD: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/messages/<chat_id>', methods=['GET'])
@@ -306,7 +318,6 @@ def get_messages(chat_id):
         db.close()
         return jsonify([dict(m) for m in messages])
     except Exception as e:
-        print(f"❌ Ошибка в get_messages: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/chats', methods=['GET'])
@@ -357,7 +368,6 @@ def get_chats():
             'groups': [dict(g) for g in groups]
         })
     except Exception as e:
-        print(f"❌ Ошибка в get_chats: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/create_group', methods=['POST'])
@@ -391,7 +401,6 @@ def create_group():
         db.close()
         return jsonify({'group_id': group_id, 'group_name': group_name})
     except Exception as e:
-        print(f"❌ Ошибка в create_group: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
