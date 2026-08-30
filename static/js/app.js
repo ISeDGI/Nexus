@@ -19,7 +19,7 @@ const recordBtn = document.getElementById('record-btn');
 const userId = window.userId || 0;
 console.log('🚀 Nexus запущен, userId:', userId);
 
-// ============ ПРИЯТНЫЙ ЗВУК УВЕДОМЛЕНИЯ ============
+// ============ ПРИЯТНЫЙ ЗВУК ============
 function playNotificationSound() {
     try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -40,7 +40,7 @@ function playNotificationSound() {
     } catch (e) {}
 }
 
-// ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ ============
+// ============ УВЕДОМЛЕНИЕ ============
 function showBrowserNotification(title, body) {
     if (Notification.permission === 'granted') {
         new Notification('💬 Nexus', { 
@@ -57,7 +57,7 @@ if ('Notification' in window && Notification.permission === 'default') {
 // ============ АВАТАРЫ ============
 function getAvatarHtml(avatar, name) {
     if (avatar) {
-        return `<img src="${avatar}?t=${Date.now()}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
+        return `<img src="${avatar}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
     }
     return (name || '?')[0].toUpperCase();
 }
@@ -65,7 +65,7 @@ function getAvatarHtml(avatar, name) {
 // ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ============
 async function updateHeaderAvatar() {
     try {
-        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
+        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}`);
         const user = await resp.json();
         const headerAvatar = document.getElementById('header-avatar');
         if (headerAvatar) {
@@ -100,7 +100,7 @@ function updateUnreadBadge(chatId, count) {
 // ============ ЗАГРУЗКА ЧАТОВ ============
 async function loadChats() {
     try {
-        const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
+        const resp = await fetch(`/api/chats?user_id=${userId}`);
         const data = await resp.json();
         
         privateChatsDiv.innerHTML = data.private.map(p => {
@@ -152,14 +152,14 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ (С ОБНОВЛЕНИЕМ АВАТАРОК) ============
+// ============ ЗАГРУЗКА СООБЩЕНИЙ (БЕЗ БЛИКОВ) ============
 let lastMessageCount = 0;
 let lastMessageChatId = null;
 let lastMessagesHtml = '';
 
 async function loadMessages(chatId) {
     try {
-        const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
+        const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}`);
         if (!resp.ok) {
             messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">Ошибка загрузки</div>';
             return;
@@ -197,20 +197,6 @@ async function loadMessages(chatId) {
             return;
         }
         
-        // === ПОЛУЧАЕМ СВЕЖИЕ АВАТАРКИ ДЛЯ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ ===
-        const avatarCache = {};
-        for (const msg of messages) {
-            if (msg.sender_id != userId && !avatarCache[msg.sender_id]) {
-                try {
-                    const profileResp = await fetch(`/api/profile/${msg.sender_id}?user_id=${userId}&t=${Date.now()}`);
-                    const profile = await profileResp.json();
-                    avatarCache[msg.sender_id] = profile.avatar;
-                } catch (e) {
-                    avatarCache[msg.sender_id] = null;
-                }
-            }
-        }
-        
         let html = '';
         messages.forEach(msg => {
             const isOwn = msg.sender_id == userId;
@@ -230,12 +216,8 @@ async function loadMessages(chatId) {
                 }
             }
             
-            // === АВАТАРКА В СООБЩЕНИЯХ ===
-            let avatar = null;
-            if (!isOwn) {
-                avatar = avatarCache[msg.sender_id] || msg.avatar;
-            }
-            const avatarHtml = !isOwn ? `<div class="chat-avatar" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${getAvatarHtml(avatar, msg.display_name || msg.username)}</div>` : '';
+            // АВАТАРКА В СООБЩЕНИЯХ
+            const avatarHtml = !isOwn ? `<div class="chat-avatar" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${getAvatarHtml(msg.avatar, msg.display_name || msg.username)}</div>` : '';
             
             html += `<div class="message ${isOwn ? 'own' : 'other'}">
                 <div style="display:flex;align-items:flex-start;gap:10px;">
@@ -492,7 +474,7 @@ async function showProfile() {
     modal.style.display = 'flex';
     
     try {
-        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
+        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}`);
         const user = await resp.json();
         
         content.innerHTML = `
@@ -531,7 +513,7 @@ async function showUserProfile(userIdToShow) {
     modal.style.display = 'flex';
     
     try {
-        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}&t=${Date.now()}`);
+        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}`);
         const user = await resp.json();
         
         content.innerHTML = `
