@@ -213,8 +213,9 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
-let lastMessageIds = [];
+// ============ ЗАГРУЗКА СООБЩЕНИЙ (С ПРАВИЛЬНЫМИ УВЕДОМЛЕНИЯМИ) ============
+// Храним последние ID сообщений для КАЖДОГО чата отдельно
+let chatMessageIds = {};
 
 async function loadMessages(chatId) {
     try {
@@ -226,22 +227,26 @@ async function loadMessages(chatId) {
         
         const messages = await resp.json();
         
-        // === СЧЁТЧИК НЕПРОЧИТАННЫХ ===
+        // === ПОЛУЧАЕМ ID СООБЩЕНИЙ ДЛЯ ЭТОГО ЧАТА ===
         const currentIds = messages.map(m => m.id);
-        const newIds = currentIds.filter(id => !lastMessageIds.includes(id));
+        const oldIds = chatMessageIds[chatId] || [];
+        const newIds = currentIds.filter(id => !oldIds.includes(id));
         
+        // === ЕСЛИ ЕСТЬ НОВЫЕ СООБЩЕНИЯ ===
         if (newIds.length > 0) {
             const newMessages = messages.filter(m => newIds.includes(m.id));
             const unread = newMessages.filter(msg => msg.sender_id != userId);
             
             if (unread.length > 0) {
-                // Если чат НЕ открыт — увеличиваем счётчик
+                // Если чат НЕ открыт ИЛИ мы не в этом чате — увеличиваем счётчик
                 if (currentChatId !== chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                 }
-                // ЗВУК + УВЕДОМЛЕНИЕ
+                
+                // ЗВУК + УВЕДОМЛЕНИЕ (всегда, если сообщение от другого пользователя)
                 const lastMsg = unread[unread.length - 1];
+                console.log('🔔 Новое сообщение от:', lastMsg.display_name || lastMsg.username);
                 playNotificationSound();
                 showBrowserNotification(
                     lastMsg.display_name || lastMsg.username,
@@ -249,7 +254,9 @@ async function loadMessages(chatId) {
                 );
             }
         }
-        lastMessageIds = currentIds;
+        
+        // Сохраняем ID сообщений для этого чата
+        chatMessageIds[chatId] = currentIds;
         
         // === ОТОБРАЖЕНИЕ СООБЩЕНИЙ ===
         if (messages.length === 0) {
@@ -343,6 +350,8 @@ async function sendMessage() {
         const data = await resp.json();
         if (resp.ok) {
             msgInput.value = '';
+            // После отправки обновляем ID сообщений в этом чате
+            chatMessageIds[currentChatId] = [];
             await loadMessages(currentChatId);
         } else {
             alert('Ошибка отправки: ' + data.error);
@@ -376,6 +385,7 @@ fileInput.addEventListener('change', async function() {
                 body: formData
             });
             if (resp.ok) {
+                chatMessageIds[currentChatId] = [];
                 await loadMessages(currentChatId);
             } else {
                 const data = await resp.json();
@@ -426,6 +436,7 @@ async function startRecording() {
                     body: formData
                 });
                 if (resp.ok) {
+                    chatMessageIds[currentChatId] = [];
                     await loadMessages(currentChatId);
                 }
             } catch (error) {
