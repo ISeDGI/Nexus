@@ -20,6 +20,7 @@
         button:hover { background: #0055b3; }
         .error { color: red; text-align: center; margin-bottom: 10px; font-size: 14px; }
         .success { color: green; text-align: center; margin-bottom: 10px; font-size: 14px; }
+        .loading { color: #007AFF; text-align: center; margin-bottom: 10px; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -31,9 +32,10 @@
         </div>
         <div id="login-form" class="form active">
             <div id="login-error" class="error"></div>
+            <div id="login-loading" class="loading" style="display:none;">⏳ Вход...</div>
             <input type="text" id="login-username" placeholder="Никнейм">
             <input type="password" id="login-password" placeholder="Пароль">
-            <button onclick="login()">Войти</button>
+            <button id="login-btn" onclick="login()">Войти</button>
         </div>
         <div id="register-form" class="form">
             <div id="register-error" class="error"></div>
@@ -55,24 +57,29 @@
                 document.getElementById('register-form').classList.add('active');
                 document.querySelector('.tab button:last-child').classList.add('active');
             }
-            // Очищаем сообщения
             document.getElementById('login-error').textContent = '';
             document.getElementById('register-error').textContent = '';
             document.getElementById('register-success').textContent = '';
         }
 
         async function login() {
-            const username = document.getElementById('login-username').value;
-            const password = document.getElementById('login-password').value;
+            const username = document.getElementById('login-username').value.trim();
+            const password = document.getElementById('login-password').value.trim();
             const errorEl = document.getElementById('login-error');
+            const loadingEl = document.getElementById('login-loading');
+            const btn = document.getElementById('login-btn');
+            
+            errorEl.textContent = '';
             
             if (!username || !password) {
                 errorEl.textContent = 'Заполните все поля';
                 return;
             }
             
-            errorEl.textContent = '';
             console.log('🔑 Пытаемся войти:', username);
+            loadingEl.style.display = 'block';
+            btn.disabled = true;
+            btn.textContent = '⏳...';
             
             try {
                 const resp = await fetch('/api/login', {
@@ -85,31 +92,39 @@
                 console.log('📨 Ответ сервера:', data);
                 
                 if (resp.ok) {
-                    console.log('✅ Вход успешен! Перенаправляем...');
+                    console.log('✅ Вход успешен!');
+                    loadingEl.textContent = '✅ Перенаправление...';
                     window.location.href = '/';
                 } else {
                     errorEl.textContent = data.error || 'Неверный логин или пароль';
+                    loadingEl.style.display = 'none';
+                    btn.disabled = false;
+                    btn.textContent = 'Войти';
                 }
             } catch (e) {
                 console.error('❌ Ошибка:', e);
                 errorEl.textContent = 'Ошибка соединения с сервером';
+                loadingEl.style.display = 'none';
+                btn.disabled = false;
+                btn.textContent = 'Войти';
             }
         }
 
         async function register() {
-            const username = document.getElementById('register-username').value;
-            const display_name = document.getElementById('register-displayname').value;
-            const password = document.getElementById('register-password').value;
+            const username = document.getElementById('register-username').value.trim();
+            const display_name = document.getElementById('register-displayname').value.trim();
+            const password = document.getElementById('register-password').value.trim();
             const errorEl = document.getElementById('register-error');
             const successEl = document.getElementById('register-success');
+            
+            errorEl.textContent = '';
+            successEl.textContent = '';
             
             if (!username || !password) {
                 errorEl.textContent = 'Заполните никнейм и пароль';
                 return;
             }
             
-            errorEl.textContent = '';
-            successEl.textContent = '';
             console.log('📝 Регистрируем:', username);
             
             try {
@@ -125,7 +140,10 @@
                 if (resp.ok) {
                     successEl.textContent = '✅ Регистрация успешна! Теперь войдите.';
                     document.getElementById('login-username').value = username;
-                    setTimeout(() => switchTab('login'), 1500);
+                    setTimeout(() => {
+                        switchTab('login');
+                        document.getElementById('login-password').value = '';
+                    }, 1500);
                 } else {
                     errorEl.textContent = data.error || 'Ошибка регистрации';
                 }
@@ -135,7 +153,6 @@
             }
         }
 
-        // Enter для отправки
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 const activeForm = document.querySelector('.form.active');
