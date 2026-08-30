@@ -1,5 +1,7 @@
 import sqlite3
+import os
 
+os.makedirs('database', exist_ok=True)
 conn = sqlite3.connect('database/data_source.db')
 cursor = conn.cursor()
 
@@ -14,12 +16,6 @@ try:
     print("✅ Добавлено поле avatar")
 except sqlite3.OperationalError:
     print("ℹ️ Поле avatar уже существует")
-
-try:
-    cursor.execute('ALTER TABLE messages ADD COLUMN file_path TEXT')
-    print("✅ Добавлено поле file_path в messages")
-except sqlite3.OperationalError:
-    print("ℹ️ Поле file_path уже существует")
 
 conn.commit()
 conn.close()

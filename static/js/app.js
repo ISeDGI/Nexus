@@ -15,7 +15,7 @@ const currentChatNameSpan = document.getElementById('current-chat-name');
 const userId = window.userId || 0;
 console.log('🚀 Приложение запущено, userId:', userId);
 
-// Загрузка чатов
+// ============ ЗАГРУЗКА ЧАТОВ ============
 async function loadChats() {
     try {
         const resp = await fetch(`/api/chats?user_id=${userId}`);
@@ -24,12 +24,14 @@ async function loadChats() {
         
         privateChatsDiv.innerHTML = data.private.map(p => `
             <div class="chat-item" onclick="openChat('private', 'user_${p.id}', '${p.display_name || p.username}', ${p.id})">
+                <div class="chat-avatar">${(p.display_name || p.username)[0].toUpperCase()}</div>
                 ${p.display_name || p.username}
             </div>
         `).join('');
         
         groupChatsDiv.innerHTML = data.groups.map(g => `
             <div class="chat-item" onclick="openChat('group', 'group_${g.id}', '${g.name}')">
+                <div class="chat-avatar">👥</div>
                 ${g.name}
             </div>
         `).join('');
@@ -38,7 +40,7 @@ async function loadChats() {
     }
 }
 
-// Открыть чат
+// ============ ОТКРЫТЬ ЧАТ ============
 function openChat(type, chatId, name, otherUserId = null) {
     console.log('📂 Открываем чат:', chatId, name);
     currentChatId = chatId;
@@ -56,7 +58,7 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// Загрузить сообщения
+// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
 async function loadMessages(chatId) {
     console.log('📨 Загружаем сообщения для:', chatId);
     try {
@@ -67,7 +69,6 @@ async function loadMessages(chatId) {
         }
         const messages = await resp.json();
         console.log('📨 Получено сообщений:', messages.length);
-        console.log('📨 Сообщения:', messages);
         
         if (messages.length === 0) {
             messagesDiv.innerHTML = '<div style="color:#999;text-align:center;padding:20px;">Нет сообщений</div>';
@@ -92,7 +93,7 @@ async function loadMessages(chatId) {
     }
 }
 
-// Отправить сообщение
+// ============ ОТПРАВКА СООБЩЕНИЯ ============
 async function sendMessage() {
     if (!currentChatId) {
         alert('Выберите чат');
@@ -129,7 +130,7 @@ async function sendMessage() {
     }
 }
 
-// Поиск пользователей
+// ============ ПОИСК ПОЛЬЗОВАТЕЛЕЙ ============
 searchInput.addEventListener('input', async function() {
     const query = this.value.trim();
     if (query.length < 1) {
@@ -163,7 +164,7 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// Начать личный чат
+// ============ НАЧАТЬ ЛИЧНЫЙ ЧАТ ============
 async function startPrivateChat(otherUserId, username) {
     const chatId = 'user_' + otherUserId;
     openChat('private', chatId, username, otherUserId);
@@ -172,7 +173,7 @@ async function startPrivateChat(otherUserId, username) {
     await loadChats();
 }
 
-// Создание группы
+// ============ ГРУППЫ ============
 async function showCreateGroup() {
     document.getElementById('group-modal').style.display = 'flex';
     
@@ -218,7 +219,60 @@ function closeModal() {
     document.getElementById('group-name').value = '';
 }
 
-// Выход
+// ============ ПРОФИЛЬ ============
+async function showProfile() {
+    const modal = document.getElementById('profile-modal');
+    const content = document.getElementById('profile-content');
+    const title = document.getElementById('profile-title');
+    
+    title.textContent = 'Мой профиль';
+    modal.style.display = 'flex';
+    
+    try {
+        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}`);
+        const user = await resp.json();
+        
+        content.innerHTML = `
+            <div style="margin-bottom:15px;">
+                <label style="font-weight:500;display:block;margin-bottom:5px;">Отображаемое имя</label>
+                <input type="text" id="profile-name" value="${user.display_name || ''}" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;">
+            </div>
+            <div style="margin-bottom:15px;">
+                <label style="font-weight:500;display:block;margin-bottom:5px;">О себе</label>
+                <textarea id="profile-bio" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;resize:vertical;min-height:60px;">${user.bio || ''}</textarea>
+            </div>
+            <button onclick="saveProfile()" style="width:100%;padding:10px;background:#007AFF;color:white;border:none;border-radius:10px;cursor:pointer;">Сохранить</button>
+        `;
+    } catch (error) {
+        content.innerHTML = '<div style="color:red;">Ошибка загрузки профиля</div>';
+    }
+}
+
+async function saveProfile() {
+    const name = document.getElementById('profile-name').value.trim();
+    const bio = document.getElementById('profile-bio').value.trim();
+    
+    try {
+        const resp = await fetch(`/api/update_profile?user_id=${userId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ display_name: name, bio })
+        });
+        if (resp.ok) {
+            alert('Профиль обновлён!');
+            closeProfile();
+            loadChats();
+        }
+    } catch (error) {
+        console.error('Ошибка сохранения:', error);
+    }
+}
+
+function closeProfile() {
+    document.getElementById('profile-modal').style.display = 'none';
+}
+
+// ============ ВЫХОД ============
 async function logout() {
     if (confirm('Выйти?')) {
         await fetch('/api/logout', { method: 'POST' });
@@ -226,13 +280,13 @@ async function logout() {
     }
 }
 
-// Обработчики
+// ============ ОБРАБОТЧИКИ ============
 sendBtn.addEventListener('click', sendMessage);
 msgInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') sendMessage();
 });
 
-// Автообновление каждые 2 секунды
+// ============ АВТООБНОВЛЕНИЕ ============
 setInterval(function() {
     if (currentChatId) {
         console.log('🔄 Автообновление чата:', currentChatId);
@@ -240,6 +294,6 @@ setInterval(function() {
     }
 }, 2000);
 
-// Запуск
+// ============ ЗАПУСК ============
 console.log('🚀 Запуск приложения, userId:', userId);
 loadChats();

@@ -18,7 +18,6 @@ def hash_password(password):
 
 @app.route('/')
 def index():
-    # Проверяем user_id в URL
     user_id = request.args.get('user_id')
     if user_id:
         db = get_db()
@@ -27,7 +26,6 @@ def index():
         if user:
             return render_template('chat.html', user_id=user['id'], username=user['username'])
     
-    # Проверяем сессию
     if 'user_id' in session:
         return render_template('chat.html', user_id=session['user_id'], username=session['username'])
     
@@ -75,11 +73,9 @@ def login():
         if not user:
             return jsonify({'error': 'Неверный логин или пароль'}), 401
         
-        # Сохраняем в сессию
         session['user_id'] = user['id']
         session['username'] = user['username']
         
-        # Возвращаем user_id для перенаправления
         return jsonify({'status': 'ok', 'user_id': user['id']})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -107,6 +103,53 @@ def get_users():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# ============ ПРОФИЛЬ ============
+
+@app.route('/api/profile/<int:user_id>', methods=['GET'])
+def get_profile(user_id):
+    try:
+        current_user_id = request.args.get('user_id') or session.get('user_id')
+        if not current_user_id:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        db = get_db()
+        user = db.execute(
+            'SELECT id, username, display_name, bio, avatar FROM users WHERE id = ?',
+            (user_id,)
+        ).fetchone()
+        db.close()
+        
+        if not user:
+            return jsonify({'error': 'Пользователь не найден'}), 404
+        
+        return jsonify(dict(user))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/update_profile', methods=['POST'])
+def update_profile():
+    try:
+        user_id = request.args.get('user_id') or session.get('user_id')
+        if not user_id:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        data = request.get_json()
+        display_name = data.get('display_name')
+        bio = data.get('bio')
+        
+        db = get_db()
+        db.execute(
+            'UPDATE users SET display_name = ?, bio = ? WHERE id = ?',
+            (display_name, bio, user_id)
+        )
+        db.commit()
+        db.close()
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ============ СООБЩЕНИЯ ============
+
 @app.route('/api/send', methods=['POST'])
 def send_message():
     try:
@@ -126,20 +169,14 @@ def send_message():
         
         db = get_db()
         
-        # === СОХРАНЯЕМ В ОБА ЧАТА ===
-        # 1. В тот чат, который указан
+        # Сохраняем в оба чата
         db.execute(
             'INSERT INTO messages (sender_id, chat_id, chat_type, text) VALUES (?, ?, ?, ?)',
             (user_id, chat_id, chat_type, text)
         )
         
-        # 2. В обратный чат (для другого пользователя)
         if chat_type == 'private' and chat_id.startswith('user_'):
-            # Получаем ID собеседника из chat_id
-            other_user_id = chat_id.replace('user_', '')
-            # Создаём обратный chat_id
             reverse_chat_id = f'user_{user_id}'
-            # Сохраняем копию в обратный чат
             db.execute(
                 'INSERT INTO messages (sender_id, chat_id, chat_type, text) VALUES (?, ?, ?, ?)',
                 (user_id, reverse_chat_id, chat_type, text)
@@ -198,7 +235,6 @@ def get_chats():
             )
         ''', (user_id, user_id, user_id, user_id)).fetchall()
         
-        # Получаем данные пользователей для личных чатов
         private_result = []
         for row in private_chats:
             if row['user_id']:
@@ -209,7 +245,6 @@ def get_chats():
                 if user:
                     private_result.append(user)
         
-        # Группы
         groups = db.execute('''
             SELECT g.id, g.name, g.created_by, u.username as creator
             FROM groups g
