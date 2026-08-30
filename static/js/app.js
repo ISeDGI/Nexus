@@ -58,7 +58,8 @@ if ('Notification' in window && Notification.permission === 'default') {
 // ============ АВАТАРЫ ============
 function getAvatarHtml(avatar, name) {
     if (avatar) {
-        return `<img src="${avatar}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
+        const avatarUrl = avatar.includes('?') ? `${avatar}&t=${Date.now()}` : `${avatar}?t=${Date.now()}`;
+        return `<img src="${avatarUrl}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
     }
     return (name || '?')[0].toUpperCase();
 }
@@ -66,7 +67,7 @@ function getAvatarHtml(avatar, name) {
 // ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ============
 async function updateHeaderAvatar() {
     try {
-        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}`);
+        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
         const user = await resp.json();
         const headerAvatar = document.getElementById('header-avatar');
         if (headerAvatar) {
@@ -81,11 +82,17 @@ async function updateHeaderAvatar() {
     }
 }
 
-// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ЧАТА (СОБЕСЕДНИК) ============
+// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ЧАТА ============
 async function updateChatHeaderAvatar(userIdToShow) {
     if (!userIdToShow) return;
     try {
-        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}`);
+        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}&t=${Date.now()}`);
+        if (!resp.ok) {
+            if (chatHeaderAvatar) {
+                chatHeaderAvatar.textContent = '👤';
+            }
+            return;
+        }
         const user = await resp.json();
         if (chatHeaderAvatar) {
             chatHeaderAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
@@ -95,6 +102,9 @@ async function updateChatHeaderAvatar(userIdToShow) {
         }
     } catch (e) {
         console.error('Ошибка обновления аватарки в шапке чата:', e);
+        if (chatHeaderAvatar) {
+            chatHeaderAvatar.textContent = '👤';
+        }
     }
 }
 
@@ -118,7 +128,7 @@ function updateUnreadBadge(chatId, count) {
 // ============ ЗАГРУЗКА ЧАТОВ ============
 async function loadChats() {
     try {
-        const resp = await fetch(`/api/chats?user_id=${userId}`);
+        const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
         const data = await resp.json();
         
         privateChatsDiv.innerHTML = data.private.map(p => {
@@ -156,7 +166,6 @@ function openChat(type, chatId, name, otherUserId = null) {
     currentChatUserId = otherUserId;
     currentChatNameSpan.textContent = name;
     
-    // Обновляем аватарку собеседника в шапке чата
     updateChatHeaderAvatar(otherUserId);
     
     if (unreadCounts[chatId]) {
@@ -180,7 +189,7 @@ let lastMessagesHtml = '';
 
 async function loadMessages(chatId) {
     try {
-        const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}`);
+        const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
         if (!resp.ok) {
             messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">Ошибка загрузки</div>';
             return;
@@ -218,14 +227,18 @@ async function loadMessages(chatId) {
             return;
         }
         
-        // === ПОЛУЧАЕМ СВЕЖИЕ АВАТАРКИ ДЛЯ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ ===
+        // === ПОЛУЧАЕМ СВЕЖИЕ АВАТАРКИ ===
         const avatarCache = {};
         for (const msg of messages) {
             if (msg.sender_id != userId && !avatarCache[msg.sender_id]) {
                 try {
-                    const profileResp = await fetch(`/api/profile/${msg.sender_id}?user_id=${userId}`);
-                    const profile = await profileResp.json();
-                    avatarCache[msg.sender_id] = profile.avatar;
+                    const profileResp = await fetch(`/api/profile/${msg.sender_id}?user_id=${userId}&t=${Date.now()}`);
+                    if (profileResp.ok) {
+                        const profile = await profileResp.json();
+                        avatarCache[msg.sender_id] = profile.avatar;
+                    } else {
+                        avatarCache[msg.sender_id] = null;
+                    }
                 } catch (e) {
                     avatarCache[msg.sender_id] = null;
                 }
@@ -251,7 +264,6 @@ async function loadMessages(chatId) {
                 }
             }
             
-            // === АВАТАРКА В СООБЩЕНИЯХ ===
             let avatar = null;
             if (!isOwn) {
                 avatar = avatarCache[msg.sender_id] || msg.avatar;
@@ -305,6 +317,8 @@ async function sendMessage() {
         if (resp.ok) {
             msgInput.value = '';
             loadMessages(currentChatId);
+            // Принудительно обновляем список чатов, чтобы у собеседника появился чат
+            setTimeout(() => loadChats(), 500);
         } else {
             alert('Ошибка отправки: ' + data.error);
         }
@@ -339,6 +353,7 @@ fileInput.addEventListener('change', async function() {
             });
             if (resp.ok) {
                 loadMessages(currentChatId);
+                setTimeout(() => loadChats(), 500);
             } else {
                 const data = await resp.json();
                 alert('Ошибка загрузки: ' + data.error);
@@ -390,6 +405,7 @@ async function startRecording() {
                 });
                 if (resp.ok) {
                     loadMessages(currentChatId);
+                    setTimeout(() => loadChats(), 500);
                 }
             } catch (error) {
                 console.error('Ошибка отправки голосового:', error);
@@ -504,7 +520,7 @@ function closeModal() {
     document.getElementById('group-name').value = '';
 }
 
-// ============ ПРОФИЛЬ (МОЙ) ============
+// ============ ПРОФИЛЬ ============
 async function showProfile() {
     const modal = document.getElementById('profile-modal');
     const content = document.getElementById('profile-content');
@@ -513,7 +529,7 @@ async function showProfile() {
     modal.style.display = 'flex';
     
     try {
-        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}`);
+        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
         const user = await resp.json();
         
         content.innerHTML = `
@@ -539,7 +555,6 @@ async function showProfile() {
     }
 }
 
-// ============ ПРОФИЛЬ ЛЮБОГО ПОЛЬЗОВАТЕЛЯ ============
 async function showUserProfile(userIdToShow) {
     if (!userIdToShow) {
         alert('Выберите чат');
@@ -552,7 +567,11 @@ async function showUserProfile(userIdToShow) {
     modal.style.display = 'flex';
     
     try {
-        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}`);
+        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}&t=${Date.now()}`);
+        if (!resp.ok) {
+            content.innerHTML = '<div style="color:red;">Пользователь не найден</div>';
+            return;
+        }
         const user = await resp.json();
         
         content.innerHTML = `
@@ -584,9 +603,8 @@ async function uploadAvatar(file) {
         if (resp.ok) {
             alert('Аватар обновлён!');
             await loadChats();
-            // Обновляем аватарку в шапке чата, если она открыта
             if (currentChatUserId) {
-                updateChatHeaderAvatar(currentChatUserId);
+                await updateChatHeaderAvatar(currentChatUserId);
             }
             closeProfile();
         } else {
@@ -641,7 +659,9 @@ setInterval(function() {
     if (currentChatId) {
         loadMessages(currentChatId);
     }
-}, 3000);
+    // Обновляем список чатов каждые 5 секунд, чтобы появлялись новые чаты
+    loadChats();
+}, 5000);
 
 // ============ ЗАПУСК ============
 console.log('🚀 Запуск Nexus, userId:', userId);
