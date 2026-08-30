@@ -22,7 +22,7 @@ const recordBtn = document.getElementById('record-btn');
 const userId = window.userId || 0;
 console.log('🚀 Nexus запущен, userId:', userId);
 
-// ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ (БЕЗ ЗВУКА) ============
+// ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ ============
 function showBrowserNotification(title, body) {
     if (Notification.permission === 'granted') {
         try {
@@ -104,6 +104,12 @@ async function updateChatHeaderAvatar(userIdToShow) {
 let unreadCounts = {};
 
 function updateUnreadBadge(chatId, count) {
+    // Если это текущий открытый чат — не показываем бейдж
+    if (chatId === currentChatId) {
+        console.log('🔴 Пропускаем бейдж для открытого чата:', chatId);
+        return;
+    }
+    
     console.log('🔴 updateUnreadBadge:', chatId, '=', count);
     const chatItem = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
     if (!chatItem) {
@@ -146,18 +152,24 @@ async function calculateUnreadCounts() {
             return;
         }
         
-        unreadCounts = {};
-        
+        // Не очищаем счётчики, а обновляем только те, которые есть
         for (const chat of data.private) {
             const chatId = `user_${chat.id}`;
             const messagesResp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
             if (messagesResp.ok) {
                 const messages = await messagesResp.json();
                 const unread = messages.filter(msg => msg.sender_id != userId);
-                if (unread.length > 0) {
-                    unreadCounts[chatId] = unread.length;
-                    console.log('📊 Счётчик для', chatId, ':', unread.length);
-                    updateUnreadBadge(chatId, unread.length);
+                const count = unread.length;
+                
+                // Обновляем счётчик
+                if (count > 0) {
+                    unreadCounts[chatId] = count;
+                    console.log('📊 Счётчик для', chatId, ':', count);
+                    updateUnreadBadge(chatId, count);
+                } else {
+                    // Если нет непрочитанных — удаляем счётчик
+                    delete unreadCounts[chatId];
+                    updateUnreadBadge(chatId, 0);
                 }
             }
         }
@@ -189,12 +201,14 @@ async function loadChats(force = false) {
         privateChatsDiv.innerHTML = data.private.map(p => {
             const chatId = `user_${p.id}`;
             const unread = unreadCounts[chatId] || 0;
+            // Если это текущий открытый чат — не показываем бейдж
+            const showBadge = (unread > 0 && chatId !== currentChatId);
             return `
                 <div class="chat-item" data-chat-id="${chatId}" onclick="openChat('private', '${chatId}', '${p.display_name || p.username}', ${p.id})">
                     <div class="chat-avatar">${getAvatarHtml(p.avatar, p.display_name || p.username)}</div>
                     <div class="chat-info">
                         <span class="chat-name">${p.display_name || p.username}</span>
-                        ${unread > 0 ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
+                        ${showBadge ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
                     </div>
                 </div>
             `;
@@ -204,12 +218,13 @@ async function loadChats(force = false) {
             const chatId = `group_${g.id}`;
             const unread = unreadCounts[chatId] || 0;
             const firstLetter = (g.name || 'Г')[0].toUpperCase();
+            const showBadge = (unread > 0 && chatId !== currentChatId);
             return `
                 <div class="chat-item" data-chat-id="${chatId}" onclick="openChat('group', '${chatId}', '${g.name}')">
                     <div class="chat-avatar" style="background:#1a237e;color:white;">${firstLetter}</div>
                     <div class="chat-info">
                         <span class="chat-name">${g.name}</span>
-                        ${unread > 0 ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
+                        ${showBadge ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
                     </div>
                 </div>
             `;
@@ -230,6 +245,7 @@ function openChat(type, chatId, name, otherUserId = null) {
     
     updateChatHeaderAvatar(otherUserId);
     
+    // Сбрасываем счётчик для открытого чата
     if (unreadCounts[chatId]) {
         console.log('📖 Открыт чат', chatId, ', сбрасываем счётчик');
         unreadCounts[chatId] = 0;
@@ -267,9 +283,13 @@ async function loadMessages(chatId) {
             const unread = newMessages.filter(msg => msg.sender_id != userId);
             
             if (unread.length > 0) {
+                // Если чат НЕ открыт — увеличиваем счётчик
                 if (currentChatId !== chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
+                } else {
+                    // Если чат открыт — счётчик уже сброшен, но уведомление показываем
+                    console.log('🔔 Новое сообщение в открытом чате, счётчик не меняем');
                 }
                 const lastMsg = unread[unread.length - 1];
                 showBrowserNotification(
@@ -726,6 +746,7 @@ setInterval(function() {
     }
 }, 3000);
 
+// Обновление списка чатов и пересчёт бейджей (но не для открытого чата)
 setInterval(function() {
     loadChats(false);
     setTimeout(async () => {
@@ -757,7 +778,7 @@ window.addEventListener('focus', function() {
 
 console.log('🚀 Запуск Nexus, userId:', userId);
 
-// ============ ПЕРВИЧНЫЙ ЗАПУСК (С ПРАВИЛЬНОЙ ОЧЕРЁДНОСТЬЮ) ============
+// ============ ПЕРВИЧНЫЙ ЗАПУСК ============
 (async function init() {
     console.log('🚀 Инициализация...');
     await loadChats(true);
