@@ -21,7 +21,6 @@ const recordBtn = document.getElementById('record-btn');
 const userId = window.userId || 0;
 console.log('🚀 Nexus запущен, userId:', userId);
 
-// ============ ПРИЯТНЫЙ ЗВУК УВЕДОМЛЕНИЯ ============
 function playNotificationSound() {
     try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -42,7 +41,6 @@ function playNotificationSound() {
     } catch (e) {}
 }
 
-// ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ ============
 function showBrowserNotification(title, body) {
     if (Notification.permission === 'granted') {
         new Notification('💬 Nexus', { 
@@ -56,7 +54,6 @@ if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
 }
 
-// ============ АВАТАРЫ ============
 function getAvatarHtml(avatar, name) {
     if (avatar) {
         return `<img src="${avatar}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
@@ -64,7 +61,6 @@ function getAvatarHtml(avatar, name) {
     return (name || '?')[0].toUpperCase();
 }
 
-// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ============
 async function updateHeaderAvatar() {
     try {
         const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
@@ -81,7 +77,6 @@ async function updateHeaderAvatar() {
     }
 }
 
-// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ЧАТА ============
 async function updateChatHeaderAvatar(userIdToShow) {
     if (!userIdToShow) {
         if (chatHeaderAvatar) {
@@ -119,7 +114,6 @@ async function updateChatHeaderAvatar(userIdToShow) {
     }
 }
 
-// ============ СЧЁТЧИК НЕПРОЧИТАННЫХ ============
 let unreadCounts = {};
 
 function updateUnreadBadge(chatId, count) {
@@ -136,11 +130,13 @@ function updateUnreadBadge(chatId, count) {
     document.title = totalUnread > 0 ? `(${totalUnread}) Nexus` : 'Nexus';
 }
 
-// ============ ЗАГРУЗКА ЧАТОВ ============
 async function loadChats() {
     try {
         const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
         const data = await resp.json();
+        
+        if (!data.private) data.private = [];
+        if (!data.groups) data.groups = [];
         
         privateChatsDiv.innerHTML = data.private.map(p => {
             const chatId = `user_${p.id}`;
@@ -177,7 +173,6 @@ async function loadChats() {
     }
 }
 
-// ============ ОТКРЫТЬ ЧАТ ============
 function openChat(type, chatId, name, otherUserId = null) {
     currentChatId = chatId;
     currentChatType = type;
@@ -201,11 +196,9 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ (БЕЗ ОШИБОК) ============
 let lastMessageCount = 0;
 let lastMessageChatId = null;
 let lastMessagesHtml = '';
-let messageLoadError = false;
 
 async function loadMessages(chatId) {
     console.log('📨 Загружаем сообщения для:', chatId);
@@ -214,18 +207,13 @@ async function loadMessages(chatId) {
         
         if (!resp.ok) {
             console.error('❌ Ошибка загрузки сообщений:', resp.status);
-            // Если была ошибка, показываем сообщение об ошибке, но не перезаписываем старые сообщения
-            if (!messageLoadError) {
-                messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">⚠️ Ошибка загрузки. Обновите страницу.</div>';
-                messageLoadError = true;
-            }
             return;
         }
         
         const messages = await resp.json();
-        messageLoadError = false;
+        console.log('📨 Получено сообщений:', messages.length);
         
-        // СЧЁТЧИК НЕПРОЧИТАННЫХ
+        // Обновляем счётчик непрочитанных
         if (lastMessageChatId === chatId && messages.length > lastMessageCount) {
             const newMessages = messages.slice(lastMessageCount);
             const unread = newMessages.filter(msg => msg.sender_id != userId);
@@ -264,8 +252,6 @@ async function loadMessages(chatId) {
                     if (profileResp.ok) {
                         const profile = await profileResp.json();
                         avatarCache[msg.sender_id] = profile.avatar;
-                    } else {
-                        avatarCache[msg.sender_id] = null;
                     }
                 } catch (e) {
                     avatarCache[msg.sender_id] = null;
@@ -318,14 +304,9 @@ async function loadMessages(chatId) {
         isFirstLoad = false;
     } catch (error) {
         console.error('❌ Ошибка загрузки сообщений:', error);
-        if (!messageLoadError) {
-            messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">⚠️ Ошибка загрузки. Обновите страницу.</div>';
-            messageLoadError = true;
-        }
     }
 }
 
-// ============ ОТПРАВКА ============
 async function sendMessage() {
     if (!currentChatId) {
         alert('Выберите чат');
@@ -347,7 +328,6 @@ async function sendMessage() {
         const data = await resp.json();
         if (resp.ok) {
             msgInput.value = '';
-            // После отправки принудительно загружаем сообщения
             await loadMessages(currentChatId);
         } else {
             alert('Ошибка отправки: ' + data.error);
@@ -358,7 +338,6 @@ async function sendMessage() {
     }
 }
 
-// ============ ФАЙЛЫ ============
 attachBtn.addEventListener('click', () => fileInput.click());
 
 fileInput.addEventListener('change', async function() {
@@ -395,7 +374,6 @@ fileInput.addEventListener('change', async function() {
     this.value = '';
 });
 
-// ============ ГОЛОСОВЫЕ ============
 let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
@@ -460,7 +438,6 @@ function stopRecording() {
     }
 }
 
-// ============ ПОИСК ============
 searchInput.addEventListener('input', async function() {
     const query = this.value.trim();
     if (query.length < 1) {
@@ -496,7 +473,6 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// ============ НАЧАТЬ ЛИЧНЫЙ ЧАТ ============
 async function startPrivateChat(otherUserId, username) {
     const chatId = 'user_' + otherUserId;
     openChat('private', chatId, username, otherUserId);
@@ -505,7 +481,6 @@ async function startPrivateChat(otherUserId, username) {
     await loadChats();
 }
 
-// ============ ГРУППЫ ============
 async function showCreateGroup() {
     document.getElementById('group-modal').style.display = 'flex';
     try {
@@ -551,7 +526,6 @@ function closeModal() {
     document.getElementById('group-name').value = '';
 }
 
-// ============ ПРОФИЛЬ ============
 async function showProfile() {
     const modal = document.getElementById('profile-modal');
     const content = document.getElementById('profile-content');
@@ -671,7 +645,6 @@ function closeProfile() {
     document.getElementById('profile-modal').style.display = 'none';
 }
 
-// ============ ВЫХОД ============
 async function logout() {
     if (confirm('Выйти?')) {
         await fetch('/api/logout', { method: 'POST' });
@@ -679,13 +652,11 @@ async function logout() {
     }
 }
 
-// ============ ОБРАБОТЧИКИ ============
 sendBtn.addEventListener('click', sendMessage);
 msgInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') sendMessage();
 });
 
-// ============ АВТООБНОВЛЕНИЕ ============
 setInterval(function() {
     if (currentChatId) {
         loadMessages(currentChatId);
@@ -696,6 +667,5 @@ setInterval(function() {
     loadChats();
 }, 5000);
 
-// ============ ЗАПУСК ============
 console.log('🚀 Запуск Nexus, userId:', userId);
 loadChats();

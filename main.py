@@ -120,8 +120,6 @@ def get_users():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ============ ПРОФИЛЬ ============
-
 @app.route('/api/profile/<int:user_id>', methods=['GET'])
 def get_profile(user_id):
     try:
@@ -200,8 +198,6 @@ def upload_avatar():
         return jsonify({'status': 'ok', 'avatar': f"/uploads/{unique_name}"})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-# ============ СООБЩЕНИЯ ============
 
 @app.route('/api/send', methods=['POST'])
 def send_message():
@@ -290,7 +286,10 @@ def get_messages(chat_id):
         
         db = get_db()
         messages = db.execute('''
-            SELECT m.*, u.username, u.display_name, u.avatar
+            SELECT m.id, m.sender_id, m.chat_id, m.chat_type, 
+                   COALESCE(m.text, '') as text, 
+                   m.file_path, m.timestamp,
+                   u.username, u.display_name, u.avatar
             FROM messages m
             JOIN users u ON m.sender_id = u.id
             WHERE m.chat_id = ?
@@ -298,7 +297,6 @@ def get_messages(chat_id):
         ''', (chat_id,)).fetchall()
         db.close()
         
-        # Преобразуем в список словарей
         result = []
         for msg in messages:
             result.append({
@@ -307,52 +305,17 @@ def get_messages(chat_id):
                 'chat_id': msg['chat_id'],
                 'chat_type': msg['chat_type'],
                 'text': msg['text'] or '',
-                'file_path': msg['file_path'] if 'file_path' in msg.keys() else None,
+                'file_path': msg['file_path'],
                 'timestamp': msg['timestamp'],
                 'username': msg['username'],
                 'display_name': msg['display_name'],
-                'avatar': msg['avatar'] if 'avatar' in msg.keys() else None
+                'avatar': msg['avatar']
             })
         
         return jsonify(result)
     except Exception as e:
         print(f"❌ Ошибка в get_messages: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-# ============ ГРУППЫ ============
-
-@app.route('/api/create_group', methods=['POST'])
-def create_group():
-    try:
-        user_id = request.args.get('user_id') or session.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Не авторизован'}), 401
-        
-        data = request.get_json()
-        group_name = data.get('name')
-        member_ids = data.get('members', [])
-        
-        db = get_db()
-        cursor = db.execute(
-            'INSERT INTO groups (name, created_by) VALUES (?, ?)',
-            (group_name, user_id)
-        )
-        group_id = cursor.lastrowid
-        
-        db.execute(
-            'INSERT INTO group_members (group_id, user_id) VALUES (?, ?)',
-            (group_id, user_id)
-        )
-        for uid in member_ids:
-            db.execute(
-                'INSERT INTO group_members (group_id, user_id) VALUES (?, ?)',
-                (group_id, uid)
-            )
-        db.commit()
-        db.close()
-        return jsonify({'group_id': group_id, 'group_name': group_name})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify([]), 200
 
 @app.route('/api/chats', methods=['GET'])
 def get_chats():
@@ -403,6 +366,39 @@ def get_chats():
         })
     except Exception as e:
         print(f"❌ Ошибка в get_chats: {str(e)}")
+        return jsonify({'private': [], 'groups': []}), 200
+
+@app.route('/api/create_group', methods=['POST'])
+def create_group():
+    try:
+        user_id = request.args.get('user_id') or session.get('user_id')
+        if not user_id:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        data = request.get_json()
+        group_name = data.get('name')
+        member_ids = data.get('members', [])
+        
+        db = get_db()
+        cursor = db.execute(
+            'INSERT INTO groups (name, created_by) VALUES (?, ?)',
+            (group_name, user_id)
+        )
+        group_id = cursor.lastrowid
+        
+        db.execute(
+            'INSERT INTO group_members (group_id, user_id) VALUES (?, ?)',
+            (group_id, user_id)
+        )
+        for uid in member_ids:
+            db.execute(
+                'INSERT INTO group_members (group_id, user_id) VALUES (?, ?)',
+                (group_id, uid)
+            )
+        db.commit()
+        db.close()
+        return jsonify({'group_id': group_id, 'group_name': group_name})
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
