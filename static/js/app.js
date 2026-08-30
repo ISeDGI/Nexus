@@ -21,7 +21,7 @@ const recordBtn = document.getElementById('record-btn');
 const userId = window.userId || 0;
 console.log('🚀 Nexus запущен, userId:', userId);
 
-// ============ ПРИЯТНЫЙ ЗВУК УВЕДОМЛЕНИЯ ============
+// ============ ЗВУК УВЕДОМЛЕНИЯ ============
 function playNotificationSound() {
     try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -39,9 +39,7 @@ function playNotificationSound() {
             osc.start(now + i * 0.1);
             osc.stop(now + i * 0.1 + 0.15);
         });
-    } catch (e) {
-        console.log('Звук не поддерживается');
-    }
+    } catch (e) {}
 }
 
 // ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ ============
@@ -54,21 +52,15 @@ function showBrowserNotification(title, body) {
                 tag: 'nexus-notification',
                 requireInteraction: false
             });
-            
-            // Автоматически закрываем через 5 секунд
             setTimeout(() => notification.close(), 5000);
-        } catch (e) {
-            console.log('Ошибка уведомления:', e);
-        }
+        } catch (e) {}
     }
 }
 
-// Запрашиваем разрешение на уведомления при загрузке
 if ('Notification' in window) {
     if (Notification.permission === 'default') {
         Notification.requestPermission();
     }
-    console.log('🔔 Разрешение на уведомления:', Notification.permission);
 }
 
 // ============ АВАТАРЫ ============
@@ -96,7 +88,6 @@ async function updateHeaderAvatar() {
     }
 }
 
-// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ЧАТА ============
 async function updateChatHeaderAvatar(userIdToShow) {
     if (!userIdToShow) {
         if (chatHeaderAvatar) {
@@ -138,14 +129,9 @@ async function updateChatHeaderAvatar(userIdToShow) {
 let unreadCounts = {};
 
 function updateUnreadBadge(chatId, count) {
-    console.log('🔄 Обновляем бейдж для', chatId, '=', count);
     const chatItem = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
-    if (!chatItem) {
-        console.log('⚠️ Элемент чата не найден для', chatId);
-        return;
-    }
+    if (!chatItem) return;
     
-    // Удаляем старый бейдж, если есть
     const oldBadge = chatItem.querySelector('.unread-badge');
     if (oldBadge) oldBadge.remove();
     
@@ -153,10 +139,10 @@ function updateUnreadBadge(chatId, count) {
         const badge = document.createElement('span');
         badge.className = 'unread-badge';
         badge.textContent = count > 99 ? '99+' : count;
-        // Находим контейнер с именем и добавляем бейдж
-        const nameContainer = chatItem.querySelector('.chat-name')?.parentElement || chatItem;
-        nameContainer.appendChild(badge);
-        console.log('✅ Бейдж добавлен для', chatId, ':', count);
+        const infoDiv = chatItem.querySelector('.chat-info') || chatItem.querySelector('div:last-child');
+        if (infoDiv) {
+            infoDiv.appendChild(badge);
+        }
     }
     
     const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
@@ -178,7 +164,7 @@ async function loadChats() {
             return `
                 <div class="chat-item" data-chat-id="${chatId}" onclick="openChat('private', '${chatId}', '${p.display_name || p.username}', ${p.id})">
                     <div class="chat-avatar">${getAvatarHtml(p.avatar, p.display_name || p.username)}</div>
-                    <div style="flex:1;display:flex;justify-content:space-between;align-items:center;">
+                    <div class="chat-info">
                         <span class="chat-name">${p.display_name || p.username}</span>
                         ${unread > 0 ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
                     </div>
@@ -193,7 +179,7 @@ async function loadChats() {
             return `
                 <div class="chat-item" data-chat-id="${chatId}" onclick="openChat('group', '${chatId}', '${g.name}')">
                     <div class="chat-avatar" style="background:#1a237e;color:white;">${firstLetter}</div>
-                    <div style="flex:1;display:flex;justify-content:space-between;align-items:center;">
+                    <div class="chat-info">
                         <span class="chat-name">${g.name}</span>
                         ${unread > 0 ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
                     </div>
@@ -207,7 +193,6 @@ async function loadChats() {
     }
 }
 
-// ============ ОТКРЫТЬ ЧАТ ============
 function openChat(type, chatId, name, otherUserId = null) {
     currentChatId = chatId;
     currentChatType = type;
@@ -217,7 +202,6 @@ function openChat(type, chatId, name, otherUserId = null) {
     
     updateChatHeaderAvatar(otherUserId);
     
-    // При открытии чата сбрасываем счётчик
     if (unreadCounts[chatId]) {
         unreadCounts[chatId] = 0;
         updateUnreadBadge(chatId, 0);
@@ -236,19 +220,16 @@ function openChat(type, chatId, name, otherUserId = null) {
 let lastMessageIds = [];
 
 async function loadMessages(chatId) {
-    console.log('📨 Загружаем сообщения для:', chatId);
     try {
         const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
-        
         if (!resp.ok) {
             console.error('❌ Ошибка загрузки сообщений:', resp.status);
             return;
         }
         
         const messages = await resp.json();
-        console.log('📨 Получено сообщений:', messages.length);
         
-        // === СЧЁТЧИК НЕПРОЧИТАННЫХ ===
+        // === СЧЁТЧИК НЕПРОЧИТАННЫХ + ЗВУК + УВЕДОМЛЕНИЕ ===
         const currentIds = messages.map(m => m.id);
         const newIds = currentIds.filter(id => !lastMessageIds.includes(id));
         
@@ -262,14 +243,9 @@ async function loadMessages(chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                 }
-                // ЗВУК И УВЕДОМЛЕНИЕ (всегда, если сообщение от другого)
+                // ЗВУК И УВЕДОМЛЕНИЕ
                 const lastMsg = unread[unread.length - 1];
-                console.log('🔔 Новое сообщение от:', lastMsg.display_name || lastMsg.username);
-                
-                // Воспроизводим звук
                 playNotificationSound();
-                
-                // Отправляем уведомление в браузер
                 showBrowserNotification(
                     lastMsg.display_name || lastMsg.username,
                     lastMsg.text || '📎 Файл'
@@ -343,7 +319,6 @@ async function loadMessages(chatId) {
         messagesDiv.innerHTML = html;
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
         isFirstLoad = false;
-        console.log('✅ Сообщения отображены');
     } catch (error) {
         console.error('❌ Ошибка загрузки сообщений:', error);
     }
@@ -710,13 +685,11 @@ function startAutoUpdate() {
     
     updateInterval = setInterval(function() {
         if (currentChatId) {
-            console.log('🔄 Автообновление сообщений:', currentChatId);
             loadMessages(currentChatId);
         }
     }, 3000);
     
     chatUpdateInterval = setInterval(function() {
-        console.log('🔄 Автообновление списка чатов');
         loadChats();
     }, 7000);
 }
@@ -725,7 +698,6 @@ startAutoUpdate();
 
 document.addEventListener('visibilitychange', function() {
     if (!document.hidden) {
-        console.log('👁️ Вкладка активна');
         if (currentChatId) {
             loadMessages(currentChatId);
         }
@@ -735,7 +707,6 @@ document.addEventListener('visibilitychange', function() {
 });
 
 window.addEventListener('focus', function() {
-    console.log('👁️ Фокус на странице');
     if (currentChatId) {
         loadMessages(currentChatId);
     }
