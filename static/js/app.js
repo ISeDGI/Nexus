@@ -124,12 +124,8 @@ async function updateChatHeaderAvatar(userIdToShow) {
 let unreadCounts = {};
 
 function updateUnreadBadge(chatId, count) {
-    console.log('🔄 updateUnreadBadge:', chatId, '=', count);
     const chatItem = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
-    if (!chatItem) {
-        console.log('⚠️ Элемент не найден для', chatId);
-        return;
-    }
+    if (!chatItem) return;
     
     const oldBadge = chatItem.querySelector('.unread-badge');
     if (oldBadge) oldBadge.remove();
@@ -142,7 +138,6 @@ function updateUnreadBadge(chatId, count) {
         if (infoDiv) {
             infoDiv.appendChild(badge);
         }
-        console.log('✅ Бейдж добавлен для', chatId);
     }
     
     const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
@@ -165,7 +160,6 @@ async function calculateUnreadCounts() {
                 const unread = messages.filter(msg => msg.sender_id != userId);
                 if (unread.length > 0) {
                     unreadCounts[chatId] = unread.length;
-                    console.log('📊 Начальный счётчик для', chatId, ':', unread.length);
                 }
             }
         }
@@ -262,21 +256,27 @@ async function loadMessages(chatId) {
         const oldIds = chatMessageIds[chatId] || [];
         const newIds = currentIds.filter(id => !oldIds.includes(id));
         
+        let hasNewUnread = false;
+        
         if (newIds.length > 0) {
             const newMessages = messages.filter(m => newIds.includes(m.id));
             const unread = newMessages.filter(msg => msg.sender_id != userId);
             
             if (unread.length > 0) {
+                hasNewUnread = true;
                 if (currentChatId !== chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                 }
                 const lastMsg = unread[unread.length - 1];
-                playNotificationSound();
-                showBrowserNotification(
-                    lastMsg.display_name || lastMsg.username,
-                    lastMsg.text || '📎 Файл'
-                );
+                // ЗВУК ТОЛЬКО ДЛЯ ЧУЖИХ СООБЩЕНИЙ И ЕСЛИ МЫ НЕ В ЭТОМ ЧАТЕ
+                if (currentChatId !== chatId) {
+                    playNotificationSound();
+                    showBrowserNotification(
+                        lastMsg.display_name || lastMsg.username,
+                        lastMsg.text || '📎 Файл'
+                    );
+                }
             }
         }
         
@@ -347,12 +347,17 @@ async function loadMessages(chatId) {
         messagesDiv.innerHTML = html;
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
         isFirstLoad = false;
+        
+        // Если были новые непрочитанные — обновляем список чатов
+        if (hasNewUnread) {
+            setTimeout(() => loadChats(), 500);
+        }
     } catch (error) {
         console.error('❌ Ошибка загрузки сообщений:', error);
     }
 }
 
-// ============ ОТПРАВКА ============
+// ============ ОТПРАВКА (БЕЗ ЗВУКА) ============
 async function sendMessage() {
     if (!currentChatId) {
         alert('Выберите чат');
@@ -747,5 +752,4 @@ window.addEventListener('focus', function() {
 console.log('🚀 Запуск Nexus, userId:', userId);
 
 // ============ ПЕРВИЧНЫЙ ЗАПУСК ============
-// Сначала считаем непрочитанные, потом загружаем чаты
 calculateUnreadCounts();
