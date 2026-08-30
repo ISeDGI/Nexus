@@ -12,6 +12,7 @@ const groupChatsDiv = document.getElementById('group-chats');
 const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
 const currentChatNameSpan = document.getElementById('current-chat-name');
+const chatHeaderAvatar = document.getElementById('chat-avatar');
 const fileInput = document.getElementById('file-input');
 const attachBtn = document.getElementById('attach-btn');
 const recordBtn = document.getElementById('record-btn');
@@ -80,6 +81,23 @@ async function updateHeaderAvatar() {
     }
 }
 
+// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ЧАТА (СОБЕСЕДНИК) ============
+async function updateChatHeaderAvatar(userIdToShow) {
+    if (!userIdToShow) return;
+    try {
+        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}`);
+        const user = await resp.json();
+        if (chatHeaderAvatar) {
+            chatHeaderAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
+        }
+        if (currentChatNameSpan) {
+            currentChatNameSpan.textContent = user.display_name || user.username;
+        }
+    } catch (e) {
+        console.error('Ошибка обновления аватарки в шапке чата:', e);
+    }
+}
+
 // ============ СЧЁТЧИК НЕПРОЧИТАННЫХ ============
 let unreadCounts = {};
 
@@ -138,6 +156,9 @@ function openChat(type, chatId, name, otherUserId = null) {
     currentChatUserId = otherUserId;
     currentChatNameSpan.textContent = name;
     
+    // Обновляем аватарку собеседника в шапке чата
+    updateChatHeaderAvatar(otherUserId);
+    
     if (unreadCounts[chatId]) {
         unreadCounts[chatId] = 0;
         updateUnreadBadge(chatId, 0);
@@ -152,7 +173,7 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ (БЕЗ БЛИКОВ) ============
+// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
 let lastMessageCount = 0;
 let lastMessageChatId = null;
 let lastMessagesHtml = '';
@@ -197,6 +218,20 @@ async function loadMessages(chatId) {
             return;
         }
         
+        // === ПОЛУЧАЕМ СВЕЖИЕ АВАТАРКИ ДЛЯ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ ===
+        const avatarCache = {};
+        for (const msg of messages) {
+            if (msg.sender_id != userId && !avatarCache[msg.sender_id]) {
+                try {
+                    const profileResp = await fetch(`/api/profile/${msg.sender_id}?user_id=${userId}`);
+                    const profile = await profileResp.json();
+                    avatarCache[msg.sender_id] = profile.avatar;
+                } catch (e) {
+                    avatarCache[msg.sender_id] = null;
+                }
+            }
+        }
+        
         let html = '';
         messages.forEach(msg => {
             const isOwn = msg.sender_id == userId;
@@ -216,8 +251,12 @@ async function loadMessages(chatId) {
                 }
             }
             
-            // АВАТАРКА В СООБЩЕНИЯХ
-            const avatarHtml = !isOwn ? `<div class="chat-avatar" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${getAvatarHtml(msg.avatar, msg.display_name || msg.username)}</div>` : '';
+            // === АВАТАРКА В СООБЩЕНИЯХ ===
+            let avatar = null;
+            if (!isOwn) {
+                avatar = avatarCache[msg.sender_id] || msg.avatar;
+            }
+            const avatarHtml = !isOwn ? `<div class="chat-avatar" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${getAvatarHtml(avatar, msg.display_name || msg.username)}</div>` : '';
             
             html += `<div class="message ${isOwn ? 'own' : 'other'}">
                 <div style="display:flex;align-items:flex-start;gap:10px;">
@@ -545,6 +584,10 @@ async function uploadAvatar(file) {
         if (resp.ok) {
             alert('Аватар обновлён!');
             await loadChats();
+            // Обновляем аватарку в шапке чата, если она открыта
+            if (currentChatUserId) {
+                updateChatHeaderAvatar(currentChatUserId);
+            }
             closeProfile();
         } else {
             alert(data.error || 'Ошибка загрузки');
