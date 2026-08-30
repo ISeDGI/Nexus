@@ -18,10 +18,8 @@
         input:focus { border-color: #007AFF; }
         button { width: 100%; padding: 12px; background: #007AFF; color: white; border: none; border-radius: 10px; font-size: 16px; cursor: pointer; }
         button:hover { background: #0055b3; }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
         .error { color: red; text-align: center; margin-bottom: 10px; font-size: 14px; }
         .success { color: green; text-align: center; margin-bottom: 10px; font-size: 14px; }
-        .loading { color: #007AFF; text-align: center; margin-bottom: 10px; font-size: 14px; display: none; }
     </style>
 </head>
 <body>
@@ -33,7 +31,6 @@
         </div>
         <div id="login-form" class="form active">
             <div id="login-error" class="error"></div>
-            <div id="login-loading" class="loading">⏳ Вход...</div>
             <input type="text" id="login-username" placeholder="Никнейм">
             <input type="password" id="login-password" placeholder="Пароль">
             <button id="login-btn" onclick="login()">Войти</button>
@@ -61,27 +58,17 @@
             document.getElementById('login-error').textContent = '';
             document.getElementById('register-error').textContent = '';
             document.getElementById('register-success').textContent = '';
-            document.getElementById('login-loading').style.display = 'none';
         }
 
         async function login() {
             const username = document.getElementById('login-username').value.trim();
             const password = document.getElementById('login-password').value.trim();
             const errorEl = document.getElementById('login-error');
-            const loadingEl = document.getElementById('login-loading');
-            const btn = document.getElementById('login-btn');
-            
-            errorEl.textContent = '';
             
             if (!username || !password) {
                 errorEl.textContent = 'Заполните все поля';
                 return;
             }
-            
-            console.log('🔑 Пытаемся войти:', username);
-            loadingEl.style.display = 'block';
-            btn.disabled = true;
-            btn.textContent = '⏳...';
             
             try {
                 const resp = await fetch('/api/login', {
@@ -91,24 +78,17 @@
                 });
                 
                 const data = await resp.json();
-                console.log('📨 Ответ сервера:', data);
+                console.log('Ответ сервера:', data);
                 
                 if (resp.ok) {
-                    console.log('✅ Вход успешен! Перенаправляем...');
-                    // === ПЕРЕНАПРАВЛЕНИЕ ===
-                    window.location.replace('/');
+                    // === ПРИНУДИТЕЛЬНОЕ ПЕРЕНАПРАВЛЕНИЕ ===
+                    window.location.assign('/');
                 } else {
                     errorEl.textContent = data.error || 'Неверный логин или пароль';
-                    loadingEl.style.display = 'none';
-                    btn.disabled = false;
-                    btn.textContent = 'Войти';
                 }
             } catch (e) {
-                console.error('❌ Ошибка:', e);
+                console.error('Ошибка:', e);
                 errorEl.textContent = 'Ошибка соединения с сервером';
-                loadingEl.style.display = 'none';
-                btn.disabled = false;
-                btn.textContent = 'Войти';
             }
         }
 
@@ -119,15 +99,10 @@
             const errorEl = document.getElementById('register-error');
             const successEl = document.getElementById('register-success');
             
-            errorEl.textContent = '';
-            successEl.textContent = '';
-            
             if (!username || !password) {
                 errorEl.textContent = 'Заполните никнейм и пароль';
                 return;
             }
-            
-            console.log('📝 Регистрируем:', username);
             
             try {
                 const resp = await fetch('/api/register', {
@@ -137,20 +112,20 @@
                 });
                 
                 const data = await resp.json();
-                console.log('📨 Ответ:', data);
+                console.log('Ответ регистрации:', data);
                 
                 if (resp.ok) {
-                    successEl.textContent = '✅ Регистрация успешна! Теперь войдите.';
+                    successEl.textContent = '✅ Регистрация успешна!';
                     document.getElementById('login-username').value = username;
                     setTimeout(() => {
                         switchTab('login');
                         document.getElementById('login-password').value = '';
-                    }, 1500);
+                    }, 1000);
                 } else {
                     errorEl.textContent = data.error || 'Ошибка регистрации';
                 }
             } catch (e) {
-                console.error('❌ Ошибка:', e);
+                console.error('Ошибка:', e);
                 errorEl.textContent = 'Ошибка соединения с сервером';
             }
         }
