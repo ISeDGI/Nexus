@@ -33,7 +33,7 @@
             <div id="login-error" class="error"></div>
             <input type="text" id="login-username" placeholder="Никнейм">
             <input type="password" id="login-password" placeholder="Пароль">
-            <button id="login-btn" onclick="login()">Войти</button>
+            <button id="login-btn">Войти</button>
         </div>
         <div id="register-form" class="form">
             <div id="register-error" class="error"></div>
@@ -41,7 +41,7 @@
             <input type="text" id="register-username" placeholder="Никнейм">
             <input type="text" id="register-displayname" placeholder="Имя (опционально)">
             <input type="password" id="register-password" placeholder="Пароль">
-            <button onclick="register()">Зарегистрироваться</button>
+            <button id="register-btn">Зарегистрироваться</button>
         </div>
     </div>
     <script>
@@ -60,9 +60,9 @@
             document.getElementById('register-success').textContent = '';
         }
 
-        async function login() {
-            // Запрещаем перезагрузку страницы
-            event.preventDefault();
+        // ===== ВХОД =====
+        document.getElementById('login-btn').addEventListener('click', function(e) {
+            e.preventDefault();
             
             const username = document.getElementById('login-username').value.trim();
             const password = document.getElementById('login-password').value.trim();
@@ -73,30 +73,29 @@
                 return;
             }
             
-            try {
-                const resp = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-                
-                const data = await resp.json();
+            fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            })
+            .then(response => response.json())
+            .then(data => {
                 console.log('Ответ сервера:', data);
-                
-                if (resp.ok) {
-                    // Перенаправление
-                    window.location.replace('/');
+                if (data.status === 'ok') {
+                    window.location.href = '/';
                 } else {
                     errorEl.textContent = data.error || 'Неверный логин или пароль';
                 }
-            } catch (e) {
-                console.error('Ошибка:', e);
+            })
+            .catch(error => {
+                console.error('Ошибка:', error);
                 errorEl.textContent = 'Ошибка соединения с сервером';
-            }
-        }
+            });
+        });
 
-        async function register() {
-            event.preventDefault();
+        // ===== РЕГИСТРАЦИЯ =====
+        document.getElementById('register-btn').addEventListener('click', function(e) {
+            e.preventDefault();
             
             const username = document.getElementById('register-username').value.trim();
             const display_name = document.getElementById('register-displayname').value.trim();
@@ -109,37 +108,40 @@
                 return;
             }
             
-            try {
-                const resp = await fetch('/api/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password, display_name })
-                });
-                
-                const data = await resp.json();
+            fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, display_name })
+            })
+            .then(response => response.json())
+            .then(data => {
                 console.log('Ответ регистрации:', data);
-                
-                if (resp.ok) {
+                if (data.status === 'ok') {
                     successEl.textContent = '✅ Регистрация успешна! Теперь войдите.';
                     document.getElementById('login-username').value = username;
                     setTimeout(() => {
                         switchTab('login');
                         document.getElementById('login-password').value = '';
-                    }, 1000);
+                    }, 1500);
                 } else {
                     errorEl.textContent = data.error || 'Ошибка регистрации';
                 }
-            } catch (e) {
-                console.error('Ошибка:', e);
+            })
+            .catch(error => {
+                console.error('Ошибка:', error);
                 errorEl.textContent = 'Ошибка соединения с сервером';
-            }
-        }
+            });
+        });
 
+        // ===== ENTER =====
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 const activeForm = document.querySelector('.form.active');
-                if (activeForm.id === 'login-form') login();
-                else if (activeForm.id === 'register-form') register();
+                if (activeForm.id === 'login-form') {
+                    document.getElementById('login-btn').click();
+                } else if (activeForm.id === 'register-form') {
+                    document.getElementById('register-btn').click();
+                }
             }
         });
     </script>
