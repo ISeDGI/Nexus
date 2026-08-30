@@ -36,6 +36,8 @@
         #chat-header .chat-avatar { width: 32px; height: 32px; font-size: 14px; cursor: pointer; flex-shrink: 0; }
         #current-chat-name { cursor: pointer; flex: 1; }
         #current-chat-name:hover { color: #007AFF; }
+        #group-info-btn { margin-left: auto; background: none; border: none; font-size: 18px; cursor: pointer; display: none; color: #007AFF; }
+        #group-info-btn:hover { color: #0055b3; }
         #messages { flex: 1; padding: 15px; overflow-y: auto; }
         .message { padding: 10px 15px; border-radius: 15px; margin-bottom: 10px; max-width: 70%; }
         .message.own { margin-left: auto; background: #dcf8c6; }
@@ -94,6 +96,7 @@
                 <div id="chat-header">
                     <div class="chat-avatar" id="chat-avatar" onclick="showUserProfile(currentChatUserId)" style="cursor:pointer;">👤</div>
                     <span id="current-chat-name" onclick="showUserProfile(currentChatUserId)" style="cursor:pointer;">Выберите чат</span>
+                    <button id="group-info-btn" onclick="showGroupInfo()" title="Информация о группе">ℹ️</button>
                 </div>
                 <div id="messages"></div>
                 <div id="input-area">
@@ -109,17 +112,18 @@
     <div id="group-modal">
         <div>
             <h2>Создать группу</h2>
-            <input type="text" id="group-name" placeholder="Название">
-            <div id="group-members-list"></div>
-            <button onclick="createGroup()" style="width:100%;background:#007AFF;color:white;">Создать</button>
-            <button onclick="closeModal()" style="width:100%;background:#eee;">Отмена</button>
+            <input type="text" id="group-name" placeholder="Название группы">
+            <div style="margin-top:10px;font-weight:500;">Выберите участников:</div>
+            <div id="group-members-list" style="max-height:200px;overflow-y:auto;margin:10px 0;"></div>
+            <button onclick="createGroup()" style="width:100%;padding:10px;background:#007AFF;color:white;border:none;border-radius:10px;cursor:pointer;">Создать</button>
+            <button onclick="closeModal()" style="width:100%;padding:10px;background:#eee;border:none;border-radius:10px;cursor:pointer;margin-top:5px;">Отмена</button>
         </div>
     </div>
     <div id="profile-modal">
         <div>
             <h2 id="profile-title">Профиль</h2>
             <div id="profile-content"></div>
-            <button onclick="closeProfile()" style="width:100%;background:#eee;margin-top:10px;">Закрыть</button>
+            <button onclick="closeProfile()" style="width:100%;padding:10px;background:#eee;border:none;border-radius:10px;cursor:pointer;margin-top:10px;">Закрыть</button>
         </div>
     </div>
     <script>
