@@ -94,8 +94,8 @@
             </div>
             <div id="chat-window">
                 <div id="chat-header">
-                    <div class="chat-avatar" id="chat-avatar" onclick="showUserProfile(currentChatUserId)" style="cursor:pointer;">👤</div>
-                    <span id="current-chat-name" onclick="showUserProfile(currentChatUserId)" style="cursor:pointer;">Выберите чат</span>
+                    <div class="chat-avatar" id="chat-avatar" onclick="handleAvatarClick()" style="cursor:pointer;">👤</div>
+                    <span id="current-chat-name" onclick="handleNameClick()" style="cursor:pointer;">Выберите чат</span>
                     <button id="group-info-btn" onclick="showGroupInfo()" title="Информация о группе">ℹ️</button>
                 </div>
                 <div id="messages"></div>

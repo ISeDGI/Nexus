@@ -381,6 +381,7 @@ def get_group(group_id):
             'creator_username': group['creator_username'],
             'creator_display_name': group['creator_display_name'],
             'creator_avatar': group['creator_avatar'],
+            'avatar': group['avatar'] if 'avatar' in group.keys() else None,
             'created_at': group['created_at'],
             'members': [dict(m) for m in members]
         })
@@ -456,6 +457,65 @@ def leave_group(group_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/group/<int:group_id>/avatar', methods=['POST'])
+def upload_group_avatar(group_id):
+    try:
+        user_id = request.args.get('user_id') or session.get('user_id')
+        if not user_id:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        if 'avatar' not in request.files:
+            return jsonify({'error': 'Нет файла'}), 400
+        
+        file = request.files['avatar']
+        if file.filename == '':
+            return jsonify({'error': 'Файл не выбран'}), 400
+        
+        db = get_db()
+        group = db.execute(
+            'SELECT created_by FROM groups WHERE id = ?',
+            (group_id,)
+        ).fetchone()
+        
+        if not group:
+            db.close()
+            return jsonify({'error': 'Группа не найдена'}), 404
+        
+        if group['created_by'] != user_id:
+            db.close()
+            return jsonify({'error': 'Только создатель группы может менять аватар'}), 403
+        
+        allowed = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+        ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+        if ext not in allowed:
+            return jsonify({'error': 'Недопустимый формат'}), 400
+        
+        filename = secure_filename(file.filename)
+        unique_name = f"group_{group_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
+        file.save(filepath)
+        
+        # Проверяем, есть ли поле avatar в таблице groups
+        try:
+            db.execute(
+                'UPDATE groups SET avatar = ? WHERE id = ?',
+                (f"/uploads/{unique_name}", group_id)
+            )
+        except sqlite3.OperationalError:
+            # Если поля нет — добавляем
+            db.execute('ALTER TABLE groups ADD COLUMN avatar TEXT')
+            db.execute(
+                'UPDATE groups SET avatar = ? WHERE id = ?',
+                (f"/uploads/{unique_name}", group_id)
+            )
+        
+        db.commit()
+        db.close()
+        
+        return jsonify({'status': 'ok', 'avatar': f"/uploads/{unique_name}"})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/chats', methods=['GET'])
 def get_chats():
     try:
@@ -491,7 +551,7 @@ def get_chats():
                     private_result.append(user)
         
         groups = db.execute('''
-            SELECT g.id, g.name, g.created_by, u.username as creator, u.display_name as creator_display_name
+            SELECT g.id, g.name, g.created_by, g.avatar, u.username as creator, u.display_name as creator_display_name
             FROM groups g
             JOIN group_members gm ON g.id = gm.group_id
             JOIN users u ON g.created_by = u.id
