@@ -16,6 +16,7 @@ const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
 const currentChatNameSpan = document.getElementById('current-chat-name');
 const chatHeaderAvatar = document.getElementById('chat-avatar');
+const headerAvatar = document.getElementById('header-avatar');
 const fileInput = document.getElementById('file-input');
 const attachBtn = document.getElementById('attach-btn');
 const recordBtn = document.getElementById('record-btn');
@@ -66,12 +67,11 @@ function getAvatarHtml(avatar, name) {
     return (name || '?')[0].toUpperCase();
 }
 
-// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ============
+// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ (СВОЯ) ============
 async function updateHeaderAvatar() {
     try {
         const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
         const user = await resp.json();
-        const headerAvatar = document.getElementById('header-avatar');
         if (headerAvatar) {
             headerAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
         }
@@ -87,7 +87,6 @@ async function updateHeaderAvatar() {
 // ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ЧАТА ============
 async function updateChatHeaderAvatar(userIdToShow, groupId, groupName, groupAvatar) {
     if (groupId) {
-        // Это группа
         if (chatHeaderAvatar) {
             if (groupAvatar) {
                 chatHeaderAvatar.innerHTML = `<img src="${groupAvatar}" alt="${groupName}">`;
@@ -105,7 +104,6 @@ async function updateChatHeaderAvatar(userIdToShow, groupId, groupName, groupAva
         return;
     }
     
-    // Личный чат
     if (!userIdToShow) {
         if (chatHeaderAvatar) {
             chatHeaderAvatar.textContent = '👤';
@@ -922,7 +920,7 @@ setInterval(function() {
 
 setInterval(function() {
     loadChats();
-}, 10000);
+}, 5000);
 
 // ============ ЗАПУСК ============
 console.log('🚀 Запуск Nexus, userId:', userId);
