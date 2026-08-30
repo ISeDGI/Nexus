@@ -2,6 +2,7 @@ let currentChatId = null;
 let currentChatType = null;
 let currentChatName = '';
 let currentChatUserId = null;
+let isFirstLoad = true;
 
 const messagesDiv = document.getElementById('messages');
 const msgInput = document.getElementById('msg-input');
@@ -23,29 +24,20 @@ function playNotificationSound() {
     try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const now = audioCtx.currentTime;
-        
-        // Два коротких мягких тона (как в Telegram)
-        const notes = [523, 659]; // C5, E5
-        
+        const notes = [523, 659];
         notes.forEach((freq, i) => {
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.connect(gain);
             gain.connect(audioCtx.destination);
-            
             osc.frequency.value = freq;
             osc.type = 'sine';
-            
-            // Плавное затухание
-            gain.gain.setValueAtTime(0.15, now + i * 0.1);
+            gain.gain.setValueAtTime(0.12, now + i * 0.1);
             gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.15);
-            
             osc.start(now + i * 0.1);
             osc.stop(now + i * 0.1 + 0.15);
         });
-    } catch (e) {
-        console.log('Звук не поддерживается');
-    }
+    } catch (e) {}
 }
 
 // ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ ============
@@ -62,10 +54,10 @@ if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
 }
 
-// ============ АВАТАРЫ ============
+// ============ АВАТАРЫ (ОБНОВЛЯЮТСЯ ВЕЗДЕ) ============
 function getAvatarHtml(avatar, name) {
     if (avatar) {
-        return `<img src="${avatar}?t=${Date.now()}" alt="${name}">`;
+        return `<img src="${avatar}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
     }
     return (name || '?')[0].toUpperCase();
 }
@@ -83,7 +75,6 @@ function updateUnreadBadge(chatId, count) {
             badge.style.display = 'none';
         }
     }
-    // Обновляем общий счётчик в заголовке
     const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
     document.title = totalUnread > 0 ? `(${totalUnread}) Nexus` : 'Nexus';
 }
@@ -93,7 +84,6 @@ async function loadChats() {
     try {
         const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
         const data = await resp.json();
-        console.log('Чаты загружены:', data);
         
         privateChatsDiv.innerHTML = data.private.map(p => {
             const chatId = `user_${p.id}`;
@@ -122,14 +112,12 @@ async function loadChats() {
 
 // ============ ОТКРЫТЬ ЧАТ ============
 function openChat(type, chatId, name, otherUserId = null) {
-    console.log('📂 Открываем чат:', chatId, name);
     currentChatId = chatId;
     currentChatType = type;
     currentChatName = name;
     currentChatUserId = otherUserId;
     currentChatNameSpan.textContent = name;
     
-    // Сбрасываем счётчик непрочитанных для этого чата
     if (unreadCounts[chatId]) {
         unreadCounts[chatId] = 0;
         updateUnreadBadge(chatId, 0);
@@ -144,12 +132,12 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
+// ============ ЗАГРУЗКА СООБЩЕНИЙ (БЕЗ БЛИКОВ) ============
 let lastMessageCount = 0;
 let lastMessageChatId = null;
+let lastMessagesHtml = '';
 
 async function loadMessages(chatId) {
-    console.log('📨 Загружаем сообщения для:', chatId);
     try {
         const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
         if (!resp.ok) {
@@ -157,19 +145,16 @@ async function loadMessages(chatId) {
             return;
         }
         const messages = await resp.json();
-        console.log('📨 Получено сообщений:', messages.length);
         
         // === СЧЁТЧИК НЕПРОЧИТАННЫХ ===
         if (lastMessageChatId === chatId && messages.length > lastMessageCount) {
             const newMessages = messages.slice(lastMessageCount);
             const unread = newMessages.filter(msg => msg.sender_id != userId);
             if (unread.length > 0) {
-                // Если чат не открыт — увеличиваем счётчик
                 if (currentChatId !== chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                 }
-                // Уведомление
                 const lastMsg = unread[unread.length - 1];
                 if (lastMsg.sender_id != userId) {
                     playNotificationSound();
@@ -183,14 +168,17 @@ async function loadMessages(chatId) {
         lastMessageCount = messages.length;
         lastMessageChatId = chatId;
         
+        // === ЕСЛИ СООБЩЕНИЙ НЕТ ===
         if (messages.length === 0) {
-            if (messagesDiv.innerHTML.trim() === '' || messagesDiv.innerHTML.includes('Нет сообщений')) {
+            if (!isFirstLoad && messagesDiv.innerHTML.includes('Нет сообщений')) {
                 return;
             }
             messagesDiv.innerHTML = '<div style="color:#999;text-align:center;padding:20px;">Нет сообщений</div>';
+            isFirstLoad = false;
             return;
         }
         
+        // === РЕНДЕРИНГ ===
         let html = '';
         messages.forEach(msg => {
             const isOwn = msg.sender_id == userId;
@@ -206,7 +194,7 @@ async function loadMessages(chatId) {
                 } else if (['mp3', 'wav', 'ogg', 'webm'].includes(ext) && !['mp4'].includes(ext)) {
                     content = `<audio src="${fileUrl}" controls style="width:150px;height:40px;margin-top:4px;"></audio>`;
                 } else {
-                    content = `<a href="${fileUrl}" download style="display:inline-block;padding:6px 12px;background:#f1f3f5;border-radius:8px;text-decoration:none;color:#25D366;font-size:13px;margin-top:4px;">📎 Скачать файл</a>`;
+                    content = `<a href="${fileUrl}" download style="display:inline-block;padding:6px 12px;background:#f1f3f5;border-radius:8px;text-decoration:none;color:#007AFF;font-size:13px;margin-top:4px;">📎 Скачать файл</a>`;
                 }
             }
             
@@ -216,9 +204,14 @@ async function loadMessages(chatId) {
                 <span class="msg-time">${new Date(msg.timestamp).toLocaleTimeString()}</span>
             </div>`;
         });
-        messagesDiv.innerHTML = html;
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        console.log('✅ Сообщения отображены, всего:', messages.length);
+        
+        // Обновляем только если изменилось
+        if (html !== lastMessagesHtml || isFirstLoad) {
+            messagesDiv.innerHTML = html;
+            lastMessagesHtml = html;
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        isFirstLoad = false;
     } catch (error) {
         console.error('❌ Ошибка загрузки сообщений:', error);
         messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">Ошибка загрузки</div>';
@@ -231,7 +224,6 @@ async function sendMessage() {
         alert('Выберите чат');
         return;
     }
-    
     const text = msgInput.value.trim();
     if (!text) return;
     
@@ -246,7 +238,6 @@ async function sendMessage() {
             })
         });
         const data = await resp.json();
-        
         if (resp.ok) {
             msgInput.value = '';
             loadMessages(currentChatId);
@@ -268,7 +259,6 @@ fileInput.addEventListener('change', async function() {
         this.value = '';
         return;
     }
-    
     const files = this.files;
     if (!files.length) return;
     
@@ -312,7 +302,6 @@ async function startRecording() {
         alert('Выберите чат');
         return;
     }
-    
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorder = new MediaRecorder(stream);
@@ -325,7 +314,6 @@ async function startRecording() {
         mediaRecorder.onstop = async () => {
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
             const file = new File([audioBlob], 'voice.webm', { type: 'audio/webm' });
-            
             const formData = new FormData();
             formData.append('file', file);
             formData.append('chat_id', currentChatId);
@@ -348,7 +336,6 @@ async function startRecording() {
             recordBtn.classList.remove('recording');
             recordBtn.textContent = '🎤';
         };
-        
         mediaRecorder.start();
         isRecording = true;
         recordBtn.classList.add('recording');
@@ -376,14 +363,16 @@ searchInput.addEventListener('input', async function() {
     try {
         const resp = await fetch(`/api/users?user_id=${userId}&search=${encodeURIComponent(query)}`);
         const users = await resp.json();
-        console.log('Результаты поиска:', users);
         
         if (users.length === 0) {
             searchResults.innerHTML = '<div class="result-item">Ничего не найдено</div>';
         } else {
             searchResults.innerHTML = users.map(u => `
                 <div class="result-item" onclick="startPrivateChat(${u.id}, '${u.username}')">
-                    ${u.display_name || u.username}
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div class="chat-avatar" style="width:30px;height:30px;font-size:14px;">${getAvatarHtml(u.avatar, u.display_name || u.username)}</div>
+                        <div><strong>${u.display_name || u.username}</strong><br><span style="font-size:12px;color:#868e96;">@${u.username}</span></div>
+                    </div>
                 </div>
             `).join('');
         }
@@ -411,7 +400,6 @@ async function startPrivateChat(otherUserId, username) {
 // ============ ГРУППЫ ============
 async function showCreateGroup() {
     document.getElementById('group-modal').style.display = 'flex';
-    
     try {
         const resp = await fetch(`/api/users?user_id=${userId}&search=`);
         const users = await resp.json();
@@ -429,7 +417,6 @@ async function createGroup() {
         alert('Введите название группы');
         return;
     }
-    
     const checkboxes = document.querySelectorAll('#group-members-list input:checked');
     const members = Array.from(checkboxes).map(cb => parseInt(cb.value));
     
@@ -440,7 +427,6 @@ async function createGroup() {
             body: JSON.stringify({ name, members })
         });
         const data = await resp.json();
-        console.log('Группа создана:', data);
         closeModal();
         await loadChats();
         openChat('group', 'group_' + data.group_id, data.group_name);
@@ -459,7 +445,6 @@ async function showProfile() {
     const modal = document.getElementById('profile-modal');
     const content = document.getElementById('profile-content');
     const title = document.getElementById('profile-title');
-    
     title.textContent = 'Мой профиль';
     modal.style.display = 'flex';
     
@@ -469,7 +454,7 @@ async function showProfile() {
         
         content.innerHTML = `
             <div style="text-align:center;margin-bottom:20px;">
-                <div class="avatar-preview" onclick="document.getElementById('avatar-input').click()" style="width:80px;height:80px;border-radius:50%;margin:0 auto 15px;display:flex;align-items:center;justify-content:center;background:#25D366;color:white;font-size:32px;overflow:hidden;cursor:pointer;">
+                <div class="avatar-preview" onclick="document.getElementById('avatar-input').click()" style="width:80px;height:80px;border-radius:50%;margin:0 auto 15px;display:flex;align-items:center;justify-content:center;background:#007AFF;color:white;font-size:32px;overflow:hidden;cursor:pointer;">
                     ${getAvatarHtml(user.avatar, user.display_name || user.username)}
                 </div>
                 <input type="file" id="avatar-input" style="display:none" accept="image/png,image/jpeg,image/gif,image/webp" onchange="uploadAvatar(this.files[0])">
@@ -483,7 +468,7 @@ async function showProfile() {
                 <label style="font-weight:500;display:block;margin-bottom:5px;">О себе</label>
                 <textarea id="profile-bio" style="width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:10px;resize:vertical;min-height:60px;">${user.bio || ''}</textarea>
             </div>
-            <button onclick="saveProfile()" style="width:100%;padding:10px;background:#25D366;color:white;border:none;border-radius:10px;cursor:pointer;margin-top:10px;">Сохранить</button>
+            <button onclick="saveProfile()" style="width:100%;padding:10px;background:#007AFF;color:white;border:none;border-radius:10px;cursor:pointer;margin-top:10px;">Сохранить</button>
         `;
     } catch (error) {
         content.innerHTML = '<div style="color:red;">Ошибка загрузки профиля</div>';
@@ -492,7 +477,6 @@ async function showProfile() {
 
 async function uploadAvatar(file) {
     if (!file) return;
-    
     const formData = new FormData();
     formData.append('avatar', file);
     
@@ -558,8 +542,12 @@ setInterval(function() {
     if (currentChatId) {
         loadMessages(currentChatId);
     }
+}, 3000);
+
+// Обновляем чаты раз в 10 секунд для аватарок
+setInterval(function() {
     loadChats();
-}, 5000);
+}, 10000);
 
 // ============ ЗАПУСК ============
 console.log('🚀 Запуск Nexus, userId:', userId);
