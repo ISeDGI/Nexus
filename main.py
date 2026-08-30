@@ -297,8 +297,26 @@ def get_messages(chat_id):
             ORDER BY m.timestamp ASC
         ''', (chat_id,)).fetchall()
         db.close()
-        return jsonify([dict(m) for m in messages])
+        
+        # Преобразуем в список словарей
+        result = []
+        for msg in messages:
+            result.append({
+                'id': msg['id'],
+                'sender_id': msg['sender_id'],
+                'chat_id': msg['chat_id'],
+                'chat_type': msg['chat_type'],
+                'text': msg['text'] or '',
+                'file_path': msg['file_path'] if 'file_path' in msg.keys() else None,
+                'timestamp': msg['timestamp'],
+                'username': msg['username'],
+                'display_name': msg['display_name'],
+                'avatar': msg['avatar'] if 'avatar' in msg.keys() else None
+            })
+        
+        return jsonify(result)
     except Exception as e:
+        print(f"❌ Ошибка в get_messages: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # ============ ГРУППЫ ============
@@ -333,184 +351,6 @@ def create_group():
         db.commit()
         db.close()
         return jsonify({'group_id': group_id, 'group_name': group_name})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/group/<int:group_id>', methods=['GET'])
-def get_group(group_id):
-    try:
-        user_id = request.args.get('user_id') or session.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Не авторизован'}), 401
-        
-        db = get_db()
-        
-        group = db.execute('''
-            SELECT g.*, u.username as creator_username, u.display_name as creator_display_name, u.avatar as creator_avatar
-            FROM groups g
-            JOIN users u ON g.created_by = u.id
-            WHERE g.id = ?
-        ''', (group_id,)).fetchone()
-        
-        if not group:
-            db.close()
-            return jsonify({'error': 'Группа не найдена'}), 404
-        
-        is_member = db.execute(
-            'SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?',
-            (group_id, user_id)
-        ).fetchone()
-        
-        if not is_member:
-            db.close()
-            return jsonify({'error': 'Вы не состоите в этой группе'}), 403
-        
-        members = db.execute('''
-            SELECT u.id, u.username, u.display_name, u.avatar
-            FROM group_members gm
-            JOIN users u ON gm.user_id = u.id
-            WHERE gm.group_id = ?
-        ''', (group_id,)).fetchall()
-        
-        db.close()
-        
-        return jsonify({
-            'id': group['id'],
-            'name': group['name'],
-            'created_by': group['created_by'],
-            'creator_username': group['creator_username'],
-            'creator_display_name': group['creator_display_name'],
-            'creator_avatar': group['creator_avatar'],
-            'avatar': group['avatar'] if 'avatar' in group.keys() else None,
-            'created_at': group['created_at'],
-            'members': [dict(m) for m in members]
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/group/<int:group_id>/add_members', methods=['POST'])
-def add_group_members(group_id):
-    try:
-        user_id = request.args.get('user_id') or session.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Не авторизован'}), 401
-        
-        data = request.get_json()
-        new_member_ids = data.get('members', [])
-        
-        db = get_db()
-        
-        group = db.execute(
-            'SELECT created_by FROM groups WHERE id = ?',
-            (group_id,)
-        ).fetchone()
-        
-        if not group:
-            db.close()
-            return jsonify({'error': 'Группа не найдена'}), 404
-        
-        if group['created_by'] != user_id:
-            db.close()
-            return jsonify({'error': 'Только создатель группы может добавлять участников'}), 403
-        
-        for uid in new_member_ids:
-            db.execute(
-                'INSERT OR IGNORE INTO group_members (group_id, user_id) VALUES (?, ?)',
-                (group_id, uid)
-            )
-        
-        db.commit()
-        db.close()
-        return jsonify({'status': 'ok'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/group/<int:group_id>/leave', methods=['POST'])
-def leave_group(group_id):
-    try:
-        user_id = request.args.get('user_id') or session.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Не авторизован'}), 401
-        
-        db = get_db()
-        
-        group = db.execute(
-            'SELECT created_by FROM groups WHERE id = ?',
-            (group_id,)
-        ).fetchone()
-        
-        if not group:
-            db.close()
-            return jsonify({'error': 'Группа не найдена'}), 404
-        
-        if group['created_by'] == user_id:
-            db.close()
-            return jsonify({'error': 'Создатель не может покинуть группу'}), 403
-        
-        db.execute(
-            'DELETE FROM group_members WHERE group_id = ? AND user_id = ?',
-            (group_id, user_id)
-        )
-        db.commit()
-        db.close()
-        return jsonify({'status': 'ok'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/group/<int:group_id>/avatar', methods=['POST'])
-def upload_group_avatar(group_id):
-    try:
-        user_id = request.args.get('user_id') or session.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Не авторизован'}), 401
-        
-        if 'avatar' not in request.files:
-            return jsonify({'error': 'Нет файла'}), 400
-        
-        file = request.files['avatar']
-        if file.filename == '':
-            return jsonify({'error': 'Файл не выбран'}), 400
-        
-        db = get_db()
-        group = db.execute(
-            'SELECT created_by FROM groups WHERE id = ?',
-            (group_id,)
-        ).fetchone()
-        
-        if not group:
-            db.close()
-            return jsonify({'error': 'Группа не найдена'}), 404
-        
-        if group['created_by'] != user_id:
-            db.close()
-            return jsonify({'error': 'Только создатель группы может менять аватар'}), 403
-        
-        allowed = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-        ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
-        if ext not in allowed:
-            return jsonify({'error': 'Недопустимый формат'}), 400
-        
-        filename = secure_filename(file.filename)
-        unique_name = f"group_{group_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
-        file.save(filepath)
-        
-        try:
-            db.execute(
-                'UPDATE groups SET avatar = ? WHERE id = ?',
-                (f"/uploads/{unique_name}", group_id)
-            )
-        except sqlite3.OperationalError:
-            db.execute('ALTER TABLE groups ADD COLUMN avatar TEXT')
-            db.execute(
-                'UPDATE groups SET avatar = ? WHERE id = ?',
-                (f"/uploads/{unique_name}", group_id)
-            )
-        
-        db.commit()
-        db.close()
-        
-        return jsonify({'status': 'ok', 'avatar': f"/uploads/{unique_name}"})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -549,7 +389,7 @@ def get_chats():
                     private_result.append(user)
         
         groups = db.execute('''
-            SELECT g.id, g.name, g.created_by, g.avatar, u.username as creator, u.display_name as creator_display_name
+            SELECT g.id, g.name, g.created_by, u.username as creator, u.display_name as creator_display_name
             FROM groups g
             JOIN group_members gm ON g.id = gm.group_id
             JOIN users u ON g.created_by = u.id
@@ -562,8 +402,9 @@ def get_chats():
             'groups': [dict(g) for g in groups]
         })
     except Exception as e:
+        print(f"❌ Ошибка в get_chats: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=port)
