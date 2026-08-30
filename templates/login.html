@@ -61,6 +61,9 @@
         }
 
         async function login() {
+            // Запрещаем перезагрузку страницы
+            event.preventDefault();
+            
             const username = document.getElementById('login-username').value.trim();
             const password = document.getElementById('login-password').value.trim();
             const errorEl = document.getElementById('login-error');
@@ -81,8 +84,8 @@
                 console.log('Ответ сервера:', data);
                 
                 if (resp.ok) {
-                    // === ПРИНУДИТЕЛЬНОЕ ПЕРЕНАПРАВЛЕНИЕ ===
-                    window.location.assign('/');
+                    // Перенаправление
+                    window.location.replace('/');
                 } else {
                     errorEl.textContent = data.error || 'Неверный логин или пароль';
                 }
@@ -93,6 +96,8 @@
         }
 
         async function register() {
+            event.preventDefault();
+            
             const username = document.getElementById('register-username').value.trim();
             const display_name = document.getElementById('register-displayname').value.trim();
             const password = document.getElementById('register-password').value.trim();
@@ -115,7 +120,7 @@
                 console.log('Ответ регистрации:', data);
                 
                 if (resp.ok) {
-                    successEl.textContent = '✅ Регистрация успешна!';
+                    successEl.textContent = '✅ Регистрация успешна! Теперь войдите.';
                     document.getElementById('login-username').value = username;
                     setTimeout(() => {
                         switchTab('login');
