@@ -110,11 +110,9 @@ function updateUnreadBadge(chatId, count) {
         return;
     }
     
-    // Удаляем старый бейдж
     const oldBadge = chatItem.querySelector('.unread-badge');
     if (oldBadge) oldBadge.remove();
     
-    // Если есть непрочитанные — добавляем бейдж
     if (count > 0) {
         const badge = document.createElement('span');
         badge.className = 'unread-badge';
@@ -124,11 +122,8 @@ function updateUnreadBadge(chatId, count) {
             infoDiv.appendChild(badge);
         }
         console.log('✅ Бейдж добавлен для', chatId);
-    } else {
-        console.log('🗑️ Бейдж удалён для', chatId);
     }
     
-    // Обновляем заголовок вкладки
     const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
     document.title = totalUnread > 0 ? `(${totalUnread}) Nexus` : 'Nexus';
 }
@@ -213,7 +208,6 @@ function openChat(type, chatId, name, otherUserId = null) {
     
     updateChatHeaderAvatar(otherUserId);
     
-    // Сбрасываем счётчик при открытии чата
     if (unreadCounts[chatId]) {
         console.log('📖 Открыт чат', chatId, ', сбрасываем счётчик');
         unreadCounts[chatId] = 0;
@@ -252,13 +246,11 @@ async function loadMessages(chatId) {
             const unread = newMessages.filter(msg => msg.sender_id != userId);
             
             if (unread.length > 0) {
-                // Если чат НЕ открыт — увеличиваем счётчик
                 if (currentChatId !== chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                     console.log('📊 Счётчик для', chatId, ':', unreadCounts[chatId]);
                 }
-                // Уведомление (без звука)
                 const lastMsg = unread[unread.length - 1];
                 showBrowserNotification(
                     lastMsg.display_name || lastMsg.username,
@@ -722,4 +714,11 @@ window.addEventListener('focus', function() {
 });
 
 console.log('🚀 Запуск Nexus, userId:', userId);
-calculateUnreadCounts();
+
+// ============ ПЕРВИЧНЫЙ ЗАПУСК (С ПРИНУДИТЕЛЬНЫМ ВЫЗОВОМ) ============
+// Сначала загружаем чаты, потом считаем непрочитанные
+loadChats().then(() => {
+    setTimeout(() => {
+        calculateUnreadCounts();
+    }, 500);
+});
