@@ -495,14 +495,12 @@ def upload_group_avatar(group_id):
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
         file.save(filepath)
         
-        # Проверяем, есть ли поле avatar в таблице groups
         try:
             db.execute(
                 'UPDATE groups SET avatar = ? WHERE id = ?',
                 (f"/uploads/{unique_name}", group_id)
             )
         except sqlite3.OperationalError:
-            # Если поля нет — добавляем
             db.execute('ALTER TABLE groups ADD COLUMN avatar TEXT')
             db.execute(
                 'UPDATE groups SET avatar = ? WHERE id = ?',
@@ -538,11 +536,14 @@ def get_chats():
             WHERE m.chat_type = 'private' AND (m.sender_id = ? OR m.sender_id IN 
                 (SELECT sender_id FROM messages WHERE chat_type = 'private')
             )
+            ORDER BY m.timestamp DESC
         ''', (user_id, user_id, user_id, user_id)).fetchall()
         
         private_result = []
+        seen = set()
         for row in private_chats:
-            if row['user_id']:
+            if row['user_id'] and row['user_id'] not in seen:
+                seen.add(row['user_id'])
                 user = db.execute(
                     'SELECT id, username, display_name, avatar FROM users WHERE id = ?',
                     (row['user_id'],)

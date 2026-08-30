@@ -373,7 +373,7 @@ async function sendMessage() {
             msgInput.value = '';
             loadMessages(currentChatId);
             lastChatsData = '';
-            setTimeout(() => loadChats(), 500);
+            setTimeout(() => loadChats(), 300);
         } else {
             alert('Ошибка отправки: ' + data.error);
         }
@@ -409,7 +409,7 @@ fileInput.addEventListener('change', async function() {
             if (resp.ok) {
                 loadMessages(currentChatId);
                 lastChatsData = '';
-                setTimeout(() => loadChats(), 500);
+                setTimeout(() => loadChats(), 300);
             } else {
                 const data = await resp.json();
                 alert('Ошибка загрузки: ' + data.error);
@@ -462,7 +462,7 @@ async function startRecording() {
                 if (resp.ok) {
                     loadMessages(currentChatId);
                     lastChatsData = '';
-                    setTimeout(() => loadChats(), 500);
+                    setTimeout(() => loadChats(), 300);
                 }
             } catch (error) {
                 console.error('Ошибка отправки голосового:', error);
@@ -920,7 +920,7 @@ setInterval(function() {
 
 setInterval(function() {
     loadChats();
-}, 5000);
+}, 3000);
 
 // ============ ЗАПУСК ============
 console.log('🚀 Запуск Nexus, userId:', userId);
