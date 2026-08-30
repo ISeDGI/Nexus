@@ -4,18 +4,21 @@
     <meta charset="UTF-8">
     <title>Вход</title>
     <style>
-        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f5f5; }
         #app { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-        h1 { text-align: center; color: #007AFF; }
-        input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; background: #007AFF; color: white; border: none; border-radius: 10px; font-size: 16px; cursor: pointer; }
-        button:hover { background: #0055b3; }
-        .error { color: red; text-align: center; margin-top: 10px; }
+        h1 { text-align: center; color: #007AFF; margin-bottom: 30px; }
         .tab { display: flex; margin-bottom: 20px; border-bottom: 2px solid #eee; }
         .tab button { flex: 1; padding: 10px; border: none; background: none; font-size: 16px; cursor: pointer; color: #999; }
         .tab button.active { color: #007AFF; border-bottom: 2px solid #007AFF; }
         .form { display: none; }
         .form.active { display: block; }
+        input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; outline: none; }
+        input:focus { border-color: #007AFF; }
+        .btn { width: 100%; padding: 12px; background: #007AFF; color: white; border: none; border-radius: 10px; font-size: 16px; cursor: pointer; }
+        .btn:hover { background: #0055b3; }
+        .error { color: red; text-align: center; margin-top: 10px; }
+        .success { color: green; text-align: center; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -30,15 +33,16 @@
             <div id="login-error" class="error"></div>
             <input type="text" id="login-username" placeholder="Никнейм">
             <input type="password" id="login-password" placeholder="Пароль">
-            <button id="login-btn">Войти</button>
+            <button class="btn" id="login-btn">Войти</button>
         </div>
         
         <div id="register-form" class="form">
             <div id="register-error" class="error"></div>
+            <div id="register-success" class="success"></div>
             <input type="text" id="register-username" placeholder="Никнейм">
-            <input type="text" id="register-displayname" placeholder="Имя">
+            <input type="text" id="register-displayname" placeholder="Имя (опционально)">
             <input type="password" id="register-password" placeholder="Пароль">
-            <button id="register-btn">Зарегистрироваться</button>
+            <button class="btn" id="register-btn">Зарегистрироваться</button>
         </div>
     </div>
 
@@ -55,10 +59,12 @@
             }
             document.getElementById('login-error').textContent = '';
             document.getElementById('register-error').textContent = '';
+            document.getElementById('register-success').textContent = '';
         }
 
-        // === ВХОД ===
+        // === ВХОД (через addEventListener) ===
         document.getElementById('login-btn').addEventListener('click', function(e) {
+            // Полностью блокируем стандартное поведение
             e.preventDefault();
             e.stopPropagation();
             
@@ -66,13 +72,15 @@
             const password = document.getElementById('login-password').value.trim();
             const errorEl = document.getElementById('login-error');
             
+            errorEl.textContent = '';
+            
             if (!username || !password) {
                 errorEl.textContent = 'Заполните все поля';
                 return;
             }
             
-            console.log('🔑 Вход:', username);
-            errorEl.textContent = '⏳ Вход...';
+            errorEl.textContent = '⏳ Проверка...';
+            errorEl.style.color = '#007AFF';
             
             fetch('/api/login', {
                 method: 'POST',
@@ -81,17 +89,19 @@
             })
             .then(r => r.json())
             .then(data => {
-                console.log('📨 Ответ:', data);
+                console.log('Ответ сервера:', data);
                 if (data.status === 'ok') {
-                    console.log('✅ Успех! Переход...');
-                    window.location.replace('/');
+                    console.log('✅ Успех! Переход на /');
+                    window.location.href = '/';
                 } else {
                     errorEl.textContent = data.error || 'Неверный логин или пароль';
+                    errorEl.style.color = 'red';
                 }
             })
             .catch(err => {
-                console.error('❌ Ошибка:', err);
-                errorEl.textContent = 'Ошибка соединения';
+                console.error('Ошибка:', err);
+                errorEl.textContent = 'Ошибка соединения с сервером';
+                errorEl.style.color = 'red';
             });
         });
 
@@ -104,14 +114,15 @@
             const display_name = document.getElementById('register-displayname').value.trim();
             const password = document.getElementById('register-password').value.trim();
             const errorEl = document.getElementById('register-error');
+            const successEl = document.getElementById('register-success');
+            
+            errorEl.textContent = '';
+            successEl.textContent = '';
             
             if (!username || !password) {
                 errorEl.textContent = 'Заполните никнейм и пароль';
                 return;
             }
-            
-            console.log('📝 Регистрация:', username);
-            errorEl.textContent = '⏳ Регистрация...';
             
             fetch('/api/register', {
                 method: 'POST',
@@ -120,23 +131,25 @@
             })
             .then(r => r.json())
             .then(data => {
-                console.log('📨 Ответ:', data);
+                console.log('Ответ регистрации:', data);
                 if (data.status === 'ok') {
-                    errorEl.textContent = '';
-                    alert('✅ Регистрация успешна! Теперь войдите.');
+                    successEl.textContent = '✅ Регистрация успешна! Теперь войдите.';
                     document.getElementById('login-username').value = username;
-                    switchTab('login');
+                    setTimeout(() => {
+                        switchTab('login');
+                        document.getElementById('login-password').value = '';
+                    }, 1500);
                 } else {
                     errorEl.textContent = data.error || 'Ошибка регистрации';
                 }
             })
             .catch(err => {
-                console.error('❌ Ошибка:', err);
-                errorEl.textContent = 'Ошибка соединения';
+                console.error('Ошибка:', err);
+                errorEl.textContent = 'Ошибка соединения с сервером';
             });
         });
 
-        // === ENTER ===
+        // === ОБРАБОТКА ENTER ===
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 const activeForm = document.querySelector('.form.active');
