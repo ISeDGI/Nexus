@@ -21,28 +21,7 @@ const recordBtn = document.getElementById('record-btn');
 const userId = window.userId || 0;
 console.log('🚀 Nexus запущен, userId:', userId);
 
-// ============ ЗВУК УВЕДОМЛЕНИЯ ============
-function playNotificationSound() {
-    try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const now = audioCtx.currentTime;
-        const notes = [523, 659];
-        notes.forEach((freq, i) => {
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.frequency.value = freq;
-            osc.type = 'sine';
-            gain.gain.setValueAtTime(0.12, now + i * 0.1);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.15);
-            osc.start(now + i * 0.1);
-            osc.stop(now + i * 0.1 + 0.15);
-        });
-    } catch (e) {}
-}
-
-// ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ ============
+// ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ (БЕЗ ЗВУКА) ============
 function showBrowserNotification(title, body) {
     if (Notification.permission === 'granted') {
         try {
@@ -126,11 +105,16 @@ let unreadCounts = {};
 function updateUnreadBadge(chatId, count) {
     console.log('🔴 updateUnreadBadge:', chatId, '=', count);
     const chatItem = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
-    if (!chatItem) return;
+    if (!chatItem) {
+        console.log('⚠️ Элемент не найден для', chatId);
+        return;
+    }
     
+    // Удаляем старый бейдж
     const oldBadge = chatItem.querySelector('.unread-badge');
     if (oldBadge) oldBadge.remove();
     
+    // Если есть непрочитанные — добавляем бейдж
     if (count > 0) {
         const badge = document.createElement('span');
         badge.className = 'unread-badge';
@@ -139,8 +123,12 @@ function updateUnreadBadge(chatId, count) {
         if (infoDiv) {
             infoDiv.appendChild(badge);
         }
+        console.log('✅ Бейдж добавлен для', chatId);
+    } else {
+        console.log('🗑️ Бейдж удалён для', chatId);
     }
     
+    // Обновляем заголовок вкладки
     const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
     document.title = totalUnread > 0 ? `(${totalUnread}) Nexus` : 'Nexus';
 }
@@ -148,6 +136,7 @@ function updateUnreadBadge(chatId, count) {
 // ============ ПОДСЧЁТ НЕПРОЧИТАННЫХ ПРИ ЗАГРУЗКЕ ============
 async function calculateUnreadCounts() {
     try {
+        console.log('📊 Рассчитываем непрочитанные...');
         const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
         const data = await resp.json();
         if (!data.private) return;
@@ -160,9 +149,11 @@ async function calculateUnreadCounts() {
                 const unread = messages.filter(msg => msg.sender_id != userId);
                 if (unread.length > 0) {
                     unreadCounts[chatId] = unread.length;
+                    console.log('📊 Начальный счётчик для', chatId, ':', unread.length);
                 }
             }
         }
+        console.log('📊 Итоговые счётчики:', unreadCounts);
         await loadChats();
     } catch (error) {
         console.error('Ошибка подсчёта непрочитанных:', error);
@@ -222,7 +213,9 @@ function openChat(type, chatId, name, otherUserId = null) {
     
     updateChatHeaderAvatar(otherUserId);
     
+    // Сбрасываем счётчик при открытии чата
     if (unreadCounts[chatId]) {
+        console.log('📖 Открыт чат', chatId, ', сбрасываем счётчик');
         unreadCounts[chatId] = 0;
         updateUnreadBadge(chatId, 0);
     }
@@ -256,7 +249,6 @@ async function loadMessages(chatId) {
         
         if (newIds.length > 0) {
             const newMessages = messages.filter(m => newIds.includes(m.id));
-            // ТОЛЬКО ЧУЖИЕ СООБЩЕНИЯ
             const unread = newMessages.filter(msg => msg.sender_id != userId);
             
             if (unread.length > 0) {
@@ -264,18 +256,14 @@ async function loadMessages(chatId) {
                 if (currentChatId !== chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
+                    console.log('📊 Счётчик для', chatId, ':', unreadCounts[chatId]);
                 }
-                
-                // ЗВУК + УВЕДОМЛЕНИЕ (ТОЛЬКО ДЛЯ ЧУЖИХ СООБЩЕНИЙ)
+                // Уведомление (без звука)
                 const lastMsg = unread[unread.length - 1];
-                console.log('🔔 Новое сообщение ОТ ДРУГОГО пользователя:', lastMsg.display_name || lastMsg.username);
-                playNotificationSound();
                 showBrowserNotification(
                     lastMsg.display_name || lastMsg.username,
                     lastMsg.text || '📎 Файл'
                 );
-            } else {
-                console.log('📨 Новые сообщения только от себя, звук НЕ играем');
             }
         }
         
@@ -384,6 +372,7 @@ async function sendMessage() {
     }
 }
 
+// ============ ВСЕ ОСТАЛЬНЫЕ ФУНКЦИИ ============
 attachBtn.addEventListener('click', () => fileInput.click());
 
 fileInput.addEventListener('change', async function() {
