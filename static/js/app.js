@@ -48,9 +48,7 @@ function showBrowserNotification(title, body) {
         try {
             new Notification('💬 Nexus', { 
                 body: `${title}: ${body}`,
-                icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">💬</text></svg>',
-                tag: 'nexus-notification',
-                requireInteraction: false
+                icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">💬</text></svg>'
             });
         } catch (e) {}
     }
@@ -126,8 +124,12 @@ async function updateChatHeaderAvatar(userIdToShow) {
 let unreadCounts = {};
 
 function updateUnreadBadge(chatId, count) {
+    console.log('🔄 updateUnreadBadge:', chatId, '=', count);
     const chatItem = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
-    if (!chatItem) return;
+    if (!chatItem) {
+        console.log('⚠️ Элемент не найден для', chatId);
+        return;
+    }
     
     const oldBadge = chatItem.querySelector('.unread-badge');
     if (oldBadge) oldBadge.remove();
@@ -140,10 +142,39 @@ function updateUnreadBadge(chatId, count) {
         if (infoDiv) {
             infoDiv.appendChild(badge);
         }
+        console.log('✅ Бейдж добавлен для', chatId);
     }
     
     const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
     document.title = totalUnread > 0 ? `(${totalUnread}) Nexus` : 'Nexus';
+}
+
+// ============ ПОДСЧЁТ НЕПРОЧИТАННЫХ ПРИ ЗАГРУЗКЕ ============
+async function calculateUnreadCounts() {
+    try {
+        const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
+        const data = await resp.json();
+        
+        if (!data.private) return;
+        
+        for (const chat of data.private) {
+            const chatId = `user_${chat.id}`;
+            const messagesResp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
+            if (messagesResp.ok) {
+                const messages = await messagesResp.json();
+                const unread = messages.filter(msg => msg.sender_id != userId);
+                if (unread.length > 0) {
+                    unreadCounts[chatId] = unread.length;
+                    console.log('📊 Начальный счётчик для', chatId, ':', unread.length);
+                }
+            }
+        }
+        
+        // Обновляем отображение
+        await loadChats();
+    } catch (error) {
+        console.error('Ошибка подсчёта непрочитанных:', error);
+    }
 }
 
 // ============ ЗАГРУЗКА ЧАТОВ ============
@@ -213,8 +244,7 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ (С ПРАВИЛЬНЫМИ УВЕДОМЛЕНИЯМИ) ============
-// Храним последние ID сообщений для КАЖДОГО чата отдельно
+// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
 let chatMessageIds = {};
 
 async function loadMessages(chatId) {
@@ -227,26 +257,21 @@ async function loadMessages(chatId) {
         
         const messages = await resp.json();
         
-        // === ПОЛУЧАЕМ ID СООБЩЕНИЙ ДЛЯ ЭТОГО ЧАТА ===
+        // === СЧЁТЧИК НЕПРОЧИТАННЫХ ===
         const currentIds = messages.map(m => m.id);
         const oldIds = chatMessageIds[chatId] || [];
         const newIds = currentIds.filter(id => !oldIds.includes(id));
         
-        // === ЕСЛИ ЕСТЬ НОВЫЕ СООБЩЕНИЯ ===
         if (newIds.length > 0) {
             const newMessages = messages.filter(m => newIds.includes(m.id));
             const unread = newMessages.filter(msg => msg.sender_id != userId);
             
             if (unread.length > 0) {
-                // Если чат НЕ открыт ИЛИ мы не в этом чате — увеличиваем счётчик
                 if (currentChatId !== chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                 }
-                
-                // ЗВУК + УВЕДОМЛЕНИЕ (всегда, если сообщение от другого пользователя)
                 const lastMsg = unread[unread.length - 1];
-                console.log('🔔 Новое сообщение от:', lastMsg.display_name || lastMsg.username);
                 playNotificationSound();
                 showBrowserNotification(
                     lastMsg.display_name || lastMsg.username,
@@ -255,7 +280,6 @@ async function loadMessages(chatId) {
             }
         }
         
-        // Сохраняем ID сообщений для этого чата
         chatMessageIds[chatId] = currentIds;
         
         // === ОТОБРАЖЕНИЕ СООБЩЕНИЙ ===
@@ -350,7 +374,6 @@ async function sendMessage() {
         const data = await resp.json();
         if (resp.ok) {
             msgInput.value = '';
-            // После отправки обновляем ID сообщений в этом чате
             chatMessageIds[currentChatId] = [];
             await loadMessages(currentChatId);
         } else {
@@ -722,4 +745,7 @@ window.addEventListener('focus', function() {
 });
 
 console.log('🚀 Запуск Nexus, userId:', userId);
-loadChats();
+
+// ============ ПЕРВИЧНЫЙ ЗАПУСК ============
+// Сначала считаем непрочитанные, потом загружаем чаты
+calculateUnreadCounts();
