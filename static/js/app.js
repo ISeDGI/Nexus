@@ -57,7 +57,7 @@ if ('Notification' in window && Notification.permission === 'default') {
 // ============ АВАТАРЫ (ЕДИНЫЙ ИСТОЧНИК) ============
 function getAvatarHtml(avatar, name) {
     if (avatar) {
-        return `<img src="${avatar}?t=${Date.now()}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
+        return `<img src="${avatar}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
     }
     return (name || '?')[0].toUpperCase();
 }
@@ -152,7 +152,7 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
+// ============ ЗАГРУЗКА СООБЩЕНИЙ (БЕЗ БЛИКОВ) ============
 let lastMessageCount = 0;
 let lastMessageChatId = null;
 let lastMessagesHtml = '';
@@ -166,6 +166,7 @@ async function loadMessages(chatId) {
         }
         const messages = await resp.json();
         
+        // СЧЁТЧИК НЕПРОЧИТАННЫХ
         if (lastMessageChatId === chatId && messages.length > lastMessageCount) {
             const newMessages = messages.slice(lastMessageCount);
             const unread = newMessages.filter(msg => msg.sender_id != userId);
@@ -215,6 +216,7 @@ async function loadMessages(chatId) {
                 }
             }
             
+            // АВАТАРКА В СООБЩЕНИЯХ (только для чужих)
             const avatarHtml = !isOwn ? `<div class="chat-avatar" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${getAvatarHtml(msg.avatar, msg.display_name || msg.username)}</div>` : '';
             
             html += `<div class="message ${isOwn ? 'own' : 'other'}">
@@ -560,16 +562,25 @@ msgInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') sendMessage();
 });
 
-// ============ АВТООБНОВЛЕНИЕ ============
+// ============ АВТООБНОВЛЕНИЕ (БЕЗ БЛИКОВ) ============
 setInterval(function() {
     if (currentChatId) {
         loadMessages(currentChatId);
     }
 }, 3000);
 
-setInterval(function() {
-    loadChats();
-}, 10000);
+// ============ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ АВАТАРОК (ТОЛЬКО ПРИ СМЕНЕ) ============
+async function forceUpdateAvatars() {
+    try {
+        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
+        const user = await resp.json();
+        const headerAvatar = document.getElementById('header-avatar');
+        if (headerAvatar) {
+            headerAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
+        }
+        await loadChats();
+    } catch (e) {}
+}
 
 // ============ ЗАПУСК ============
 console.log('🚀 Запуск Nexus, userId:', userId);
