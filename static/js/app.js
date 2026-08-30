@@ -21,12 +21,11 @@ const recordBtn = document.getElementById('record-btn');
 const userId = window.userId || 0;
 console.log('🚀 Nexus запущен, userId:', userId);
 
-// ============ ПРИЯТНЫЙ ЗВУК УВЕДОМЛЕНИЯ (ДВА ТОНА) ============
+// ============ ПРИЯТНЫЙ ЗВУК УВЕДОМЛЕНИЯ ============
 function playNotificationSound() {
     try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const now = audioCtx.currentTime;
-        // Два мягких тона как в Telegram
         const notes = [523, 659];
         notes.forEach((freq, i) => {
             const osc = audioCtx.createOscillator();
@@ -40,9 +39,7 @@ function playNotificationSound() {
             osc.start(now + i * 0.1);
             osc.stop(now + i * 0.1 + 0.15);
         });
-    } catch (e) {
-        console.log('Звук не поддерживается');
-    }
+    } catch (e) {}
 }
 
 // ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ ============
@@ -204,31 +201,39 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
+// ============ ЗАГРУЗКА СООБЩЕНИЙ (БЕЗ ОШИБОК) ============
 let lastMessageCount = 0;
 let lastMessageChatId = null;
 let lastMessagesHtml = '';
+let messageLoadError = false;
 
 async function loadMessages(chatId) {
+    console.log('📨 Загружаем сообщения для:', chatId);
     try {
         const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
+        
         if (!resp.ok) {
-            messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">Ошибка загрузки</div>';
+            console.error('❌ Ошибка загрузки сообщений:', resp.status);
+            // Если была ошибка, показываем сообщение об ошибке, но не перезаписываем старые сообщения
+            if (!messageLoadError) {
+                messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">⚠️ Ошибка загрузки. Обновите страницу.</div>';
+                messageLoadError = true;
+            }
             return;
         }
+        
         const messages = await resp.json();
+        messageLoadError = false;
         
         // СЧЁТЧИК НЕПРОЧИТАННЫХ
         if (lastMessageChatId === chatId && messages.length > lastMessageCount) {
             const newMessages = messages.slice(lastMessageCount);
             const unread = newMessages.filter(msg => msg.sender_id != userId);
             if (unread.length > 0) {
-                // Если чат НЕ открыт — увеличиваем счётчик
                 if (currentChatId !== chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                 }
-                // Уведомление и звук
                 const lastMsg = unread[unread.length - 1];
                 if (lastMsg.sender_id != userId) {
                     playNotificationSound();
@@ -313,7 +318,10 @@ async function loadMessages(chatId) {
         isFirstLoad = false;
     } catch (error) {
         console.error('❌ Ошибка загрузки сообщений:', error);
-        messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">Ошибка загрузки</div>';
+        if (!messageLoadError) {
+            messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">⚠️ Ошибка загрузки. Обновите страницу.</div>';
+            messageLoadError = true;
+        }
     }
 }
 
@@ -339,7 +347,8 @@ async function sendMessage() {
         const data = await resp.json();
         if (resp.ok) {
             msgInput.value = '';
-            loadMessages(currentChatId);
+            // После отправки принудительно загружаем сообщения
+            await loadMessages(currentChatId);
         } else {
             alert('Ошибка отправки: ' + data.error);
         }
@@ -373,7 +382,7 @@ fileInput.addEventListener('change', async function() {
                 body: formData
             });
             if (resp.ok) {
-                loadMessages(currentChatId);
+                await loadMessages(currentChatId);
             } else {
                 const data = await resp.json();
                 alert('Ошибка загрузки: ' + data.error);
@@ -424,7 +433,7 @@ async function startRecording() {
                     body: formData
                 });
                 if (resp.ok) {
-                    loadMessages(currentChatId);
+                    await loadMessages(currentChatId);
                 }
             } catch (error) {
                 console.error('Ошибка отправки голосового:', error);
