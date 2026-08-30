@@ -134,7 +134,16 @@ async function calculateUnreadCounts() {
         console.log('📊 Рассчитываем непрочитанные...');
         const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
         const data = await resp.json();
-        if (!data.private) return;
+        
+        console.log('📊 Данные чатов:', data);
+        
+        if (!data.private || data.private.length === 0) {
+            console.log('📊 Нет личных чатов');
+            return;
+        }
+        
+        // Очищаем счётчики
+        unreadCounts = {};
         
         for (const chat of data.private) {
             const chatId = `user_${chat.id}`;
@@ -149,6 +158,8 @@ async function calculateUnreadCounts() {
             }
         }
         console.log('📊 Итоговые счётчики:', unreadCounts);
+        
+        // Обновляем отображение
         await loadChats();
     } catch (error) {
         console.error('Ошибка подсчёта непрочитанных:', error);
@@ -715,10 +726,14 @@ window.addEventListener('focus', function() {
 
 console.log('🚀 Запуск Nexus, userId:', userId);
 
-// ============ ПЕРВИЧНЫЙ ЗАПУСК (С ПРИНУДИТЕЛЬНЫМ ВЫЗОВОМ) ============
-// Сначала загружаем чаты, потом считаем непрочитанные
+// ============ ПЕРВИЧНЫЙ ЗАПУСК ============
+// Загружаем чаты и считаем непрочитанные
 loadChats().then(() => {
-    setTimeout(() => {
-        calculateUnreadCounts();
-    }, 500);
+    setTimeout(async () => {
+        await calculateUnreadCounts();
+        // Принудительно обновляем бейджи после подсчёта
+        for (const [chatId, count] of Object.entries(unreadCounts)) {
+            updateUnreadBadge(chatId, count);
+        }
+    }, 1000);
 });
