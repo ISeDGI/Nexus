@@ -13,7 +13,6 @@ const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
 const currentChatNameSpan = document.getElementById('current-chat-name');
 const chatHeaderAvatar = document.getElementById('chat-avatar');
-const headerAvatar = document.getElementById('header-avatar');
 const fileInput = document.getElementById('file-input');
 const attachBtn = document.getElementById('attach-btn');
 const recordBtn = document.getElementById('record-btn');
@@ -67,17 +66,25 @@ function getAvatarHtml(avatar, name) {
 // ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ (СВОЯ) ============
 async function updateHeaderAvatar() {
     try {
+        console.log('🔄 Обновляем аватарку в шапке...');
         const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
         const user = await resp.json();
+        console.log('📸 Данные пользователя:', user);
+        
+        const headerAvatar = document.getElementById('header-avatar');
         if (headerAvatar) {
             headerAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
+            console.log('✅ Аватарка в шапке обновлена');
+        } else {
+            console.log('❌ Элемент header-avatar не найден');
         }
+        
         const usernameDisplay = document.getElementById('username-display');
         if (usernameDisplay) {
             usernameDisplay.textContent = user.display_name || user.username;
         }
     } catch (e) {
-        console.error('Ошибка обновления аватарки в шапке:', e);
+        console.error('❌ Ошибка обновления аватарки в шапке:', e);
     }
 }
 
@@ -168,7 +175,8 @@ async function loadChats() {
             `;
         }).join('');
         
-        updateHeaderAvatar();
+        // ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ АВАТАРКУ В ШАПКЕ
+        await updateHeaderAvatar();
     } catch (error) {
         console.error('Ошибка загрузки чатов:', error);
     }
