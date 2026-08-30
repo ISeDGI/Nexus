@@ -3,6 +3,8 @@ let currentChatType = null;
 let currentChatName = '';
 let currentChatUserId = null;
 let isFirstLoad = true;
+let chatsLoaded = false;
+let lastChatsData = '';
 
 const messagesDiv = document.getElementById('messages');
 const msgInput = document.getElementById('msg-input');
@@ -58,8 +60,7 @@ if ('Notification' in window && Notification.permission === 'default') {
 // ============ АВАТАРЫ ============
 function getAvatarHtml(avatar, name) {
     if (avatar) {
-        const avatarUrl = avatar.includes('?') ? `${avatar}&t=${Date.now()}` : `${avatar}?t=${Date.now()}`;
-        return `<img src="${avatarUrl}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
+        return `<img src="${avatar}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
     }
     return (name || '?')[0].toUpperCase();
 }
@@ -125,11 +126,19 @@ function updateUnreadBadge(chatId, count) {
     document.title = totalUnread > 0 ? `(${totalUnread}) Nexus` : 'Nexus';
 }
 
-// ============ ЗАГРУЗКА ЧАТОВ ============
+// ============ ЗАГРУЗКА ЧАТОВ (БЕЗ ПЕРЕРИСОВКИ, ЕСЛИ НЕТ ИЗМЕНЕНИЙ) ============
 async function loadChats() {
     try {
         const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
         const data = await resp.json();
+        const newDataStr = JSON.stringify(data);
+        
+        // Если данные не изменились — не перерисовываем
+        if (newDataStr === lastChatsData && chatsLoaded) {
+            return;
+        }
+        lastChatsData = newDataStr;
+        chatsLoaded = true;
         
         privateChatsDiv.innerHTML = data.private.map(p => {
             const chatId = `user_${p.id}`;
@@ -317,7 +326,8 @@ async function sendMessage() {
         if (resp.ok) {
             msgInput.value = '';
             loadMessages(currentChatId);
-            // Принудительно обновляем список чатов, чтобы у собеседника появился чат
+            // Принудительно обновляем список чатов (если новый чат)
+            lastChatsData = '';
             setTimeout(() => loadChats(), 500);
         } else {
             alert('Ошибка отправки: ' + data.error);
@@ -353,6 +363,7 @@ fileInput.addEventListener('change', async function() {
             });
             if (resp.ok) {
                 loadMessages(currentChatId);
+                lastChatsData = '';
                 setTimeout(() => loadChats(), 500);
             } else {
                 const data = await resp.json();
@@ -405,6 +416,7 @@ async function startRecording() {
                 });
                 if (resp.ok) {
                     loadMessages(currentChatId);
+                    lastChatsData = '';
                     setTimeout(() => loadChats(), 500);
                 }
             } catch (error) {
@@ -602,6 +614,7 @@ async function uploadAvatar(file) {
         const data = await resp.json();
         if (resp.ok) {
             alert('Аватар обновлён!');
+            lastChatsData = '';
             await loadChats();
             if (currentChatUserId) {
                 await updateChatHeaderAvatar(currentChatUserId);
@@ -629,6 +642,7 @@ async function saveProfile() {
         if (resp.ok) {
             alert('Профиль обновлён!');
             closeProfile();
+            lastChatsData = '';
             loadChats();
         }
     } catch (error) {
@@ -655,13 +669,17 @@ msgInput.addEventListener('keydown', function(e) {
 });
 
 // ============ АВТООБНОВЛЕНИЕ ============
+// Обновляем сообщения каждые 3 секунды
 setInterval(function() {
     if (currentChatId) {
         loadMessages(currentChatId);
     }
-    // Обновляем список чатов каждые 5 секунд, чтобы появлялись новые чаты
+}, 3000);
+
+// Обновляем чаты каждые 10 секунд (НО БЕЗ ПЕРЕРИСОВКИ, ЕСЛИ НЕТ ИЗМЕНЕНИЙ)
+setInterval(function() {
     loadChats();
-}, 5000);
+}, 10000);
 
 // ============ ЗАПУСК ============
 console.log('🚀 Запуск Nexus, userId:', userId);
