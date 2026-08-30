@@ -21,11 +21,12 @@ const recordBtn = document.getElementById('record-btn');
 const userId = window.userId || 0;
 console.log('🚀 Nexus запущен, userId:', userId);
 
-// ============ ПРИЯТНЫЙ ЗВУК ============
+// ============ ПРИЯТНЫЙ ЗВУК УВЕДОМЛЕНИЯ (ДВА ТОНА) ============
 function playNotificationSound() {
     try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const now = audioCtx.currentTime;
+        // Два мягких тона как в Telegram
         const notes = [523, 659];
         notes.forEach((freq, i) => {
             const osc = audioCtx.createOscillator();
@@ -39,10 +40,12 @@ function playNotificationSound() {
             osc.start(now + i * 0.1);
             osc.stop(now + i * 0.1 + 0.15);
         });
-    } catch (e) {}
+    } catch (e) {
+        console.log('Звук не поддерживается');
+    }
 }
 
-// ============ УВЕДОМЛЕНИЕ ============
+// ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ ============
 function showBrowserNotification(title, body) {
     if (Notification.permission === 'granted') {
         new Notification('💬 Nexus', { 
@@ -132,7 +135,6 @@ function updateUnreadBadge(chatId, count) {
             badge.style.display = 'none';
         }
     }
-    // Обновляем заголовок страницы
     const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
     document.title = totalUnread > 0 ? `(${totalUnread}) Nexus` : 'Nexus';
 }
@@ -188,7 +190,6 @@ function openChat(type, chatId, name, otherUserId = null) {
     
     updateChatHeaderAvatar(otherUserId);
     
-    // Сбрасываем счётчик непрочитанных при открытии чата
     if (unreadCounts[chatId]) {
         unreadCounts[chatId] = 0;
         updateUnreadBadge(chatId, 0);
@@ -217,17 +218,17 @@ async function loadMessages(chatId) {
         }
         const messages = await resp.json();
         
-        // ===== СЧЁТЧИК НЕПРОЧИТАННЫХ =====
+        // СЧЁТЧИК НЕПРОЧИТАННЫХ
         if (lastMessageChatId === chatId && messages.length > lastMessageCount) {
             const newMessages = messages.slice(lastMessageCount);
             const unread = newMessages.filter(msg => msg.sender_id != userId);
             if (unread.length > 0) {
-                // Если чат не открыт — увеличиваем счётчик
+                // Если чат НЕ открыт — увеличиваем счётчик
                 if (currentChatId !== chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                 }
-                // Уведомление
+                // Уведомление и звук
                 const lastMsg = unread[unread.length - 1];
                 if (lastMsg.sender_id != userId) {
                     playNotificationSound();
@@ -681,6 +682,10 @@ setInterval(function() {
         loadMessages(currentChatId);
     }
 }, 3000);
+
+setInterval(function() {
+    loadChats();
+}, 5000);
 
 // ============ ЗАПУСК ============
 console.log('🚀 Запуск Nexus, userId:', userId);
