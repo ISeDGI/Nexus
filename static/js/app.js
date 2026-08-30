@@ -2,10 +2,7 @@ let currentChatId = null;
 let currentChatType = null;
 let currentChatName = '';
 let currentChatUserId = null;
-let currentGroupId = null;
 let isFirstLoad = true;
-let chatsLoaded = false;
-let lastChatsData = '';
 
 const messagesDiv = document.getElementById('messages');
 const msgInput = document.getElementById('msg-input');
@@ -16,7 +13,6 @@ const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
 const currentChatNameSpan = document.getElementById('current-chat-name');
 const chatHeaderAvatar = document.getElementById('chat-avatar');
-const headerAvatar = document.getElementById('header-avatar');
 const fileInput = document.getElementById('file-input');
 const attachBtn = document.getElementById('attach-btn');
 const recordBtn = document.getElementById('record-btn');
@@ -67,11 +63,12 @@ function getAvatarHtml(avatar, name) {
     return (name || '?')[0].toUpperCase();
 }
 
-// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ (СВОЯ) ============
+// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ============
 async function updateHeaderAvatar() {
     try {
-        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
+        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}`);
         const user = await resp.json();
+        const headerAvatar = document.getElementById('header-avatar');
         if (headerAvatar) {
             headerAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
         }
@@ -85,60 +82,27 @@ async function updateHeaderAvatar() {
 }
 
 // ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ЧАТА ============
-async function updateChatHeaderAvatar(userIdToShow, groupId, groupName, groupAvatar) {
-    if (groupId) {
-        if (chatHeaderAvatar) {
-            if (groupAvatar) {
-                chatHeaderAvatar.innerHTML = `<img src="${groupAvatar}" alt="${groupName}">`;
-                chatHeaderAvatar.style.background = 'transparent';
-            } else {
-                const firstLetter = (groupName || 'Г')[0].toUpperCase();
-                chatHeaderAvatar.textContent = firstLetter;
-                chatHeaderAvatar.style.background = '#1a237e';
-                chatHeaderAvatar.style.color = 'white';
-                chatHeaderAvatar.innerHTML = firstLetter;
-            }
-        }
-        const infoBtn = document.getElementById('group-info-btn');
-        if (infoBtn) infoBtn.style.display = 'inline-block';
-        return;
-    }
-    
-    if (!userIdToShow) {
-        if (chatHeaderAvatar) {
-            chatHeaderAvatar.textContent = '👤';
-            chatHeaderAvatar.style.background = '#007AFF';
-            chatHeaderAvatar.innerHTML = '👤';
-        }
-        return;
-    }
-    
+async function updateChatHeaderAvatar(userIdToShow) {
+    if (!userIdToShow) return;
     try {
-        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}&t=${Date.now()}`);
+        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}`);
         if (!resp.ok) {
             if (chatHeaderAvatar) {
                 chatHeaderAvatar.textContent = '👤';
-                chatHeaderAvatar.style.background = '#007AFF';
-                chatHeaderAvatar.innerHTML = '👤';
             }
             return;
         }
         const user = await resp.json();
         if (chatHeaderAvatar) {
-            chatHeaderAvatar.style.background = '#007AFF';
             chatHeaderAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
         }
         if (currentChatNameSpan) {
             currentChatNameSpan.textContent = user.display_name || user.username;
         }
-        const infoBtn = document.getElementById('group-info-btn');
-        if (infoBtn) infoBtn.style.display = 'none';
     } catch (e) {
         console.error('Ошибка обновления аватарки в шапке чата:', e);
         if (chatHeaderAvatar) {
             chatHeaderAvatar.textContent = '👤';
-            chatHeaderAvatar.style.background = '#007AFF';
-            chatHeaderAvatar.innerHTML = '👤';
         }
     }
 }
@@ -163,15 +127,8 @@ function updateUnreadBadge(chatId, count) {
 // ============ ЗАГРУЗКА ЧАТОВ ============
 async function loadChats() {
     try {
-        const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
+        const resp = await fetch(`/api/chats?user_id=${userId}`);
         const data = await resp.json();
-        const newDataStr = JSON.stringify(data);
-        
-        if (newDataStr === lastChatsData && chatsLoaded) {
-            return;
-        }
-        lastChatsData = newDataStr;
-        chatsLoaded = true;
         
         privateChatsDiv.innerHTML = data.private.map(p => {
             const chatId = `user_${p.id}`;
@@ -187,22 +144,12 @@ async function loadChats() {
             `;
         }).join('');
         
-        groupChatsDiv.innerHTML = data.groups.map(g => {
-            const chatId = `group_${g.id}`;
-            const unread = unreadCounts[chatId] || 0;
-            const firstLetter = (g.name || 'Г')[0].toUpperCase();
-            const avatarHtml = g.avatar ? `<img src="${g.avatar}" alt="${g.name}">` : firstLetter;
-            return `
-                <div class="chat-item" data-chat-id="${chatId}" onclick="openChat('group', '${chatId}', '${g.name}', null, ${g.id}, '${g.avatar || ''}')">
-                    <div class="chat-avatar" style="${g.avatar ? '' : 'background:#1a237e;color:white;'}">${avatarHtml}</div>
-                    <div style="flex:1;display:flex;justify-content:space-between;align-items:center;">
-                        <span class="chat-name">${g.name}</span>
-                        <span style="font-size:11px;color:#999;">${g.creator_display_name || g.creator}</span>
-                        ${unread > 0 ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
-                    </div>
-                </div>
-            `;
-        }).join('');
+        groupChatsDiv.innerHTML = data.groups.map(g => `
+            <div class="chat-item" onclick="openChat('group', 'group_${g.id}', '${g.name}')">
+                <div class="chat-avatar">👥</div>
+                <span class="chat-name">${g.name}</span>
+            </div>
+        `).join('');
         
         updateHeaderAvatar();
     } catch (error) {
@@ -211,19 +158,14 @@ async function loadChats() {
 }
 
 // ============ ОТКРЫТЬ ЧАТ ============
-function openChat(type, chatId, name, otherUserId = null, groupId = null, groupAvatar = null) {
+function openChat(type, chatId, name, otherUserId = null) {
     currentChatId = chatId;
     currentChatType = type;
     currentChatName = name;
     currentChatUserId = otherUserId;
-    currentGroupId = groupId;
     currentChatNameSpan.textContent = name;
     
-    if (groupId) {
-        updateChatHeaderAvatar(null, groupId, name, groupAvatar);
-    } else {
-        updateChatHeaderAvatar(otherUserId);
-    }
+    updateChatHeaderAvatar(otherUserId);
     
     if (unreadCounts[chatId]) {
         unreadCounts[chatId] = 0;
@@ -246,7 +188,7 @@ let lastMessagesHtml = '';
 
 async function loadMessages(chatId) {
     try {
-        const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
+        const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}`);
         if (!resp.ok) {
             messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">Ошибка загрузки</div>';
             return;
@@ -287,7 +229,7 @@ async function loadMessages(chatId) {
         for (const msg of messages) {
             if (msg.sender_id != userId && !avatarCache[msg.sender_id]) {
                 try {
-                    const profileResp = await fetch(`/api/profile/${msg.sender_id}?user_id=${userId}&t=${Date.now()}`);
+                    const profileResp = await fetch(`/api/profile/${msg.sender_id}?user_id=${userId}`);
                     if (profileResp.ok) {
                         const profile = await profileResp.json();
                         avatarCache[msg.sender_id] = profile.avatar;
@@ -372,8 +314,6 @@ async function sendMessage() {
         if (resp.ok) {
             msgInput.value = '';
             loadMessages(currentChatId);
-            lastChatsData = '';
-            setTimeout(() => loadChats(), 300);
         } else {
             alert('Ошибка отправки: ' + data.error);
         }
@@ -408,8 +348,6 @@ fileInput.addEventListener('change', async function() {
             });
             if (resp.ok) {
                 loadMessages(currentChatId);
-                lastChatsData = '';
-                setTimeout(() => loadChats(), 300);
             } else {
                 const data = await resp.json();
                 alert('Ошибка загрузки: ' + data.error);
@@ -461,8 +399,6 @@ async function startRecording() {
                 });
                 if (resp.ok) {
                     loadMessages(currentChatId);
-                    lastChatsData = '';
-                    setTimeout(() => loadChats(), 300);
                 }
             } catch (error) {
                 console.error('Ошибка отправки голосового:', error);
@@ -568,9 +504,8 @@ async function createGroup() {
         });
         const data = await resp.json();
         closeModal();
-        lastChatsData = '';
         await loadChats();
-        openChat('group', 'group_' + data.group_id, data.group_name, null, data.group_id);
+        openChat('group', 'group_' + data.group_id, data.group_name);
     } catch (error) {
         console.error('Ошибка создания группы:', error);
     }
@@ -579,200 +514,6 @@ async function createGroup() {
 function closeModal() {
     document.getElementById('group-modal').style.display = 'none';
     document.getElementById('group-name').value = '';
-}
-
-// ============ ОБРАБОТКА КЛИКОВ ============
-function handleAvatarClick() {
-    if (currentGroupId) {
-        showGroupInfo();
-    } else if (currentChatUserId) {
-        showUserProfile(currentChatUserId);
-    } else {
-        alert('Выберите чат');
-    }
-}
-
-function handleNameClick() {
-    if (currentGroupId) {
-        showGroupInfo();
-    } else if (currentChatUserId) {
-        showUserProfile(currentChatUserId);
-    } else {
-        alert('Выберите чат');
-    }
-}
-
-// ============ ПРОСМОТР ГРУППЫ ============
-async function showGroupInfo() {
-    if (!currentGroupId) {
-        alert('Это не группа или группа не выбрана');
-        return;
-    }
-    
-    const modal = document.getElementById('profile-modal');
-    const content = document.getElementById('profile-content');
-    const title = document.getElementById('profile-title');
-    title.textContent = 'Информация о группе';
-    modal.style.display = 'flex';
-    
-    try {
-        const resp = await fetch(`/api/group/${currentGroupId}?user_id=${userId}&t=${Date.now()}`);
-        if (!resp.ok) {
-            content.innerHTML = '<div style="color:red;">Ошибка загрузки группы</div>';
-            return;
-        }
-        const group = await resp.json();
-        
-        let membersHtml = group.members.map(m => `
-            <div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid #f1f3f5;">
-                <div class="chat-avatar" style="width:30px;height:30px;font-size:12px;">${getAvatarHtml(m.avatar, m.display_name || m.username)}</div>
-                <div>
-                    <div style="font-weight:500;">${m.display_name || m.username}</div>
-                    ${m.id === group.created_by ? '<div style="font-size:11px;color:#007AFF;">Администратор</div>' : ''}
-                </div>
-            </div>
-        `).join('');
-        
-        const groupAvatarHtml = group.avatar ? `<img src="${group.avatar}" alt="${group.name}">` : (group.name || 'Г')[0].toUpperCase();
-        
-        content.innerHTML = `
-            <div style="text-align:center;margin-bottom:20px;">
-                <div class="avatar-preview" style="width:80px;height:80px;border-radius:50%;margin:0 auto 15px;display:flex;align-items:center;justify-content:center;background:${group.avatar ? 'transparent' : '#1a237e'};color:white;font-size:32px;overflow:hidden;cursor:${group.created_by == userId ? 'pointer' : 'default'};" onclick="${group.created_by == userId ? "document.getElementById('group-avatar-input').click()" : ''}">
-                    ${groupAvatarHtml}
-                </div>
-                ${group.created_by == userId ? '<input type="file" id="group-avatar-input" style="display:none" accept="image/png,image/jpeg,image/gif,image/webp" onchange="uploadGroupAvatar(this.files[0])"><div style="font-size:12px;color:#999;">Нажми на аватар, чтобы изменить</div>' : ''}
-                <h3>${group.name}</h3>
-                <div style="color:#868e96;font-size:14px;">Создатель: ${group.creator_display_name || group.creator_username}</div>
-                <div style="color:#999;font-size:12px;margin-top:5px;">Участников: ${group.members.length}</div>
-            </div>
-            <div style="margin-top:15px;">
-                <div style="font-weight:500;margin-bottom:10px;">Участники:</div>
-                ${membersHtml}
-            </div>
-            ${group.created_by == userId ? `
-                <div style="margin-top:15px;">
-                    <button onclick="showAddMembers()" style="width:100%;padding:10px;background:#007AFF;color:white;border:none;border-radius:10px;cursor:pointer;">Добавить участников</button>
-                </div>
-            ` : `
-                <div style="margin-top:15px;">
-                    <button onclick="leaveGroup()" style="width:100%;padding:10px;background:#dc3545;color:white;border:none;border-radius:10px;cursor:pointer;">Покинуть группу</button>
-                </div>
-            `}
-        `;
-    } catch (error) {
-        content.innerHTML = '<div style="color:red;">Ошибка загрузки группы</div>';
-    }
-}
-
-async function showAddMembers() {
-    const content = document.getElementById('profile-content');
-    try {
-        const resp = await fetch(`/api/users?user_id=${userId}&search=`);
-        const users = await resp.json();
-        
-        content.innerHTML = `
-            <h3>Добавить участников</h3>
-            <div style="max-height:200px;overflow-y:auto;margin:10px 0;">
-                ${users.map(u => `
-                    <div style="padding:5px 0;display:flex;align-items:center;gap:10px;">
-                        <input type="checkbox" value="${u.id}" id="add_user_${u.id}">
-                        <label for="add_user_${u.id}">${u.display_name || u.username}</label>
-                    </div>
-                `).join('')}
-            </div>
-            <button onclick="confirmAddMembers()" style="width:100%;padding:10px;background:#007AFF;color:white;border:none;border-radius:10px;cursor:pointer;">Добавить</button>
-            <button onclick="showGroupInfo()" style="width:100%;padding:10px;background:#eee;border:none;border-radius:10px;cursor:pointer;margin-top:5px;">Назад</button>
-        `;
-    } catch (error) {
-        console.error('Ошибка загрузки пользователей:', error);
-    }
-}
-
-async function confirmAddMembers() {
-    const checkboxes = document.querySelectorAll('#profile-content input[type="checkbox"]:checked');
-    const members = Array.from(checkboxes).map(cb => parseInt(cb.value));
-    
-    if (members.length === 0) {
-        alert('Выберите хотя бы одного пользователя');
-        return;
-    }
-    
-    try {
-        const resp = await fetch(`/api/group/${currentGroupId}/add_members?user_id=${userId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ members })
-        });
-        if (resp.ok) {
-            alert('Участники добавлены!');
-            showGroupInfo();
-            loadChats();
-        } else {
-            const data = await resp.json();
-            alert(data.error || 'Ошибка добавления');
-        }
-    } catch (error) {
-        console.error('Ошибка добавления участников:', error);
-    }
-}
-
-async function leaveGroup() {
-    if (!confirm('Вы уверены, что хотите покинуть группу?')) return;
-    
-    try {
-        const resp = await fetch(`/api/group/${currentGroupId}/leave?user_id=${userId}`, {
-            method: 'POST'
-        });
-        if (resp.ok) {
-            alert('Вы покинули группу');
-            closeProfile();
-            loadChats();
-            if (currentChatId && currentChatId.startsWith('group_')) {
-                currentChatId = null;
-                currentGroupId = null;
-                currentChatNameSpan.textContent = 'Выберите чат';
-                messagesDiv.innerHTML = '';
-                if (chatHeaderAvatar) {
-                    chatHeaderAvatar.textContent = '👤';
-                    chatHeaderAvatar.style.background = '#007AFF';
-                    chatHeaderAvatar.innerHTML = '👤';
-                }
-                const infoBtn = document.getElementById('group-info-btn');
-                if (infoBtn) infoBtn.style.display = 'none';
-            }
-        } else {
-            const data = await resp.json();
-            alert(data.error || 'Ошибка');
-        }
-    } catch (error) {
-        console.error('Ошибка выхода из группы:', error);
-    }
-}
-
-// ============ ЗАГРУЗКА АВАТАРКИ ГРУППЫ ============
-async function uploadGroupAvatar(file) {
-    if (!file) return;
-    const formData = new FormData();
-    formData.append('avatar', file);
-    
-    try {
-        const resp = await fetch(`/api/group/${currentGroupId}/avatar?user_id=${userId}`, {
-            method: 'POST',
-            body: formData
-        });
-        if (resp.ok) {
-            alert('Аватар группы обновлён!');
-            showGroupInfo();
-            lastChatsData = '';
-            loadChats();
-        } else {
-            const data = await resp.json();
-            alert(data.error || 'Ошибка загрузки');
-        }
-    } catch (error) {
-        console.error('Ошибка загрузки аватара группы:', error);
-        alert('Ошибка загрузки');
-    }
 }
 
 // ============ ПРОФИЛЬ ============
@@ -784,7 +525,7 @@ async function showProfile() {
     modal.style.display = 'flex';
     
     try {
-        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
+        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}`);
         const user = await resp.json();
         
         content.innerHTML = `
@@ -822,7 +563,7 @@ async function showUserProfile(userIdToShow) {
     modal.style.display = 'flex';
     
     try {
-        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}&t=${Date.now()}`);
+        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}`);
         if (!resp.ok) {
             content.innerHTML = '<div style="color:red;">Пользователь не найден</div>';
             return;
@@ -857,7 +598,6 @@ async function uploadAvatar(file) {
         const data = await resp.json();
         if (resp.ok) {
             alert('Аватар обновлён!');
-            lastChatsData = '';
             await loadChats();
             if (currentChatUserId) {
                 await updateChatHeaderAvatar(currentChatUserId);
@@ -885,7 +625,6 @@ async function saveProfile() {
         if (resp.ok) {
             alert('Профиль обновлён!');
             closeProfile();
-            lastChatsData = '';
             loadChats();
         }
     } catch (error) {
@@ -916,10 +655,6 @@ setInterval(function() {
     if (currentChatId) {
         loadMessages(currentChatId);
     }
-}, 3000);
-
-setInterval(function() {
-    loadChats();
 }, 3000);
 
 // ============ ЗАПУСК ============

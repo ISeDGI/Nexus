@@ -36,8 +36,6 @@
         #chat-header .chat-avatar { width: 32px; height: 32px; font-size: 14px; cursor: pointer; flex-shrink: 0; }
         #current-chat-name { cursor: pointer; flex: 1; }
         #current-chat-name:hover { color: #007AFF; }
-        #group-info-btn { margin-left: auto; background: none; border: none; font-size: 18px; cursor: pointer; display: none; color: #007AFF; }
-        #group-info-btn:hover { color: #0055b3; }
         #messages { flex: 1; padding: 15px; overflow-y: auto; }
         .message { padding: 10px 15px; border-radius: 15px; margin-bottom: 10px; max-width: 70%; }
         .message.own { margin-left: auto; background: #dcf8c6; }
@@ -94,9 +92,8 @@
             </div>
             <div id="chat-window">
                 <div id="chat-header">
-                    <div class="chat-avatar" id="chat-avatar" onclick="handleAvatarClick()" style="cursor:pointer;">👤</div>
-                    <span id="current-chat-name" onclick="handleNameClick()" style="cursor:pointer;">Выберите чат</span>
-                    <button id="group-info-btn" onclick="showGroupInfo()" title="Информация о группе">ℹ️</button>
+                    <div class="chat-avatar" id="chat-avatar" onclick="showUserProfile(currentChatUserId)" style="cursor:pointer;">👤</div>
+                    <span id="current-chat-name" onclick="showUserProfile(currentChatUserId)" style="cursor:pointer;">Выберите чат</span>
                 </div>
                 <div id="messages"></div>
                 <div id="input-area">
