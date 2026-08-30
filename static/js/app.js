@@ -126,10 +126,7 @@ let unreadCounts = {};
 function updateUnreadBadge(chatId, count) {
     console.log('🔴 updateUnreadBadge:', chatId, '=', count);
     const chatItem = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
-    if (!chatItem) {
-        console.log('⚠️ Элемент не найден для', chatId);
-        return;
-    }
+    if (!chatItem) return;
     
     const oldBadge = chatItem.querySelector('.unread-badge');
     if (oldBadge) oldBadge.remove();
@@ -142,7 +139,6 @@ function updateUnreadBadge(chatId, count) {
         if (infoDiv) {
             infoDiv.appendChild(badge);
         }
-        console.log('✅ Бейдж добавлен для', chatId);
     }
     
     const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
@@ -152,10 +148,8 @@ function updateUnreadBadge(chatId, count) {
 // ============ ПОДСЧЁТ НЕПРОЧИТАННЫХ ПРИ ЗАГРУЗКЕ ============
 async function calculateUnreadCounts() {
     try {
-        console.log('📊 Рассчитываем непрочитанные...');
         const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
         const data = await resp.json();
-        
         if (!data.private) return;
         
         for (const chat of data.private) {
@@ -166,14 +160,10 @@ async function calculateUnreadCounts() {
                 const unread = messages.filter(msg => msg.sender_id != userId);
                 if (unread.length > 0) {
                     unreadCounts[chatId] = unread.length;
-                    console.log('📊 Начальный счётчик для', chatId, ':', unread.length);
                 }
             }
         }
-        
-        // Обновляем отображение
         await loadChats();
-        console.log('📊 Счётчики загружены:', unreadCounts);
     } catch (error) {
         console.error('Ошибка подсчёта непрочитанных:', error);
     }
@@ -258,34 +248,34 @@ async function loadMessages(chatId) {
         }
         
         const messages = await resp.json();
-        console.log('📨 Загружено сообщений для', chatId, ':', messages.length);
         
         // === СЧЁТЧИК НЕПРОЧИТАННЫХ ===
         const currentIds = messages.map(m => m.id);
         const oldIds = chatMessageIds[chatId] || [];
         const newIds = currentIds.filter(id => !oldIds.includes(id));
         
-        let hasNewUnread = false;
-        
         if (newIds.length > 0) {
             const newMessages = messages.filter(m => newIds.includes(m.id));
+            // ТОЛЬКО ЧУЖИЕ СООБЩЕНИЯ
             const unread = newMessages.filter(msg => msg.sender_id != userId);
             
             if (unread.length > 0) {
-                hasNewUnread = true;
-                // Если чат не открыт — увеличиваем счётчик
+                // Если чат НЕ открыт — увеличиваем счётчик
                 if (currentChatId !== chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                 }
-                // ЗВУК + УВЕДОМЛЕНИЕ (если сообщение от другого пользователя)
+                
+                // ЗВУК + УВЕДОМЛЕНИЕ (ТОЛЬКО ДЛЯ ЧУЖИХ СООБЩЕНИЙ)
                 const lastMsg = unread[unread.length - 1];
-                console.log('🔔 Новое сообщение от:', lastMsg.display_name || lastMsg.username);
+                console.log('🔔 Новое сообщение ОТ ДРУГОГО пользователя:', lastMsg.display_name || lastMsg.username);
                 playNotificationSound();
                 showBrowserNotification(
                     lastMsg.display_name || lastMsg.username,
                     lastMsg.text || '📎 Файл'
                 );
+            } else {
+                console.log('📨 Новые сообщения только от себя, звук НЕ играем');
             }
         }
         
@@ -356,10 +346,6 @@ async function loadMessages(chatId) {
         messagesDiv.innerHTML = html;
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
         isFirstLoad = false;
-        
-        if (hasNewUnread) {
-            setTimeout(() => loadChats(), 500);
-        }
     } catch (error) {
         console.error('❌ Ошибка загрузки сообщений:', error);
     }
@@ -747,6 +733,4 @@ window.addEventListener('focus', function() {
 });
 
 console.log('🚀 Запуск Nexus, userId:', userId);
-
-// ============ ПЕРВИЧНЫЙ ЗАПУСК ============
 calculateUnreadCounts();
