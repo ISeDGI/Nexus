@@ -22,7 +22,7 @@ const recordBtn = document.getElementById('record-btn');
 const userId = window.userId || 0;
 console.log('🚀 Nexus запущен, userId:', userId);
 
-// ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ ============
+// ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ (БЕЗ ЗВУКА) ============
 function showBrowserNotification(title, body) {
     if (Notification.permission === 'granted') {
         try {
@@ -141,43 +141,27 @@ async function calculateUnreadCounts() {
         console.log('📊 private:', data.private);
         console.log('📊 private.length:', data.private ? data.private.length : 'undefined');
         
-        // Проверяем наличие private
         if (!data.private || data.private.length === 0) {
-            console.log('📊 Нет личных чатов, проверяем, может есть группы?');
-            if (data.groups && data.groups.length > 0) {
-                console.log('📊 Есть группы, но личных чатов нет. Нужно отправить сообщение, чтобы появился чат.');
-            }
+            console.log('📊 Нет личных чатов');
             return;
         }
         
-        // Очищаем старые счётчики
         unreadCounts = {};
         
-        // Считаем непрочитанные для каждого чата
-        console.log('📊 Обрабатываем', data.private.length, 'чатов');
         for (const chat of data.private) {
             const chatId = `user_${chat.id}`;
-            console.log('📊 Проверяем чат:', chatId);
             const messagesResp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
             if (messagesResp.ok) {
                 const messages = await messagesResp.json();
-                console.log('📊 Сообщений в чате', chatId, ':', messages.length);
                 const unread = messages.filter(msg => msg.sender_id != userId);
                 if (unread.length > 0) {
                     unreadCounts[chatId] = unread.length;
                     console.log('📊 Счётчик для', chatId, ':', unread.length);
+                    updateUnreadBadge(chatId, unread.length);
                 }
             }
         }
         console.log('📊 Итоговые счётчики:', unreadCounts);
-        
-        // Принудительно перерисовываем чаты с бейджами
-        if (Object.keys(unreadCounts).length > 0) {
-            console.log('📊 Есть непрочитанные, обновляем отображение');
-            await loadChats(true);
-        } else {
-            console.log('📊 Нет непрочитанных сообщений');
-        }
     } catch (error) {
         console.error('Ошибка подсчёта непрочитанных:', error);
     }
@@ -194,7 +178,6 @@ async function loadChats(force = false) {
         
         const newDataStr = JSON.stringify(data);
         
-        // Если данные не изменились и не форс — не перерисовываем
         if (newDataStr === lastChatsData && !force && !isFirstLoad) {
             console.log('📋 Чаты не изменились, пропускаем перерисовку');
             return;
@@ -391,8 +374,9 @@ async function sendMessage() {
             msgInput.value = '';
             chatMessageIds[currentChatId] = [];
             await loadMessages(currentChatId);
-            // Принудительно обновляем чаты
-            setTimeout(() => loadChats(true), 300);
+            setTimeout(async () => {
+                await calculateUnreadCounts();
+            }, 500);
         } else {
             alert('Ошибка отправки: ' + data.error);
         }
@@ -428,7 +412,9 @@ fileInput.addEventListener('change', async function() {
             if (resp.ok) {
                 chatMessageIds[currentChatId] = [];
                 await loadMessages(currentChatId);
-                setTimeout(() => loadChats(true), 300);
+                setTimeout(async () => {
+                    await calculateUnreadCounts();
+                }, 500);
             } else {
                 const data = await resp.json();
                 alert('Ошибка загрузки: ' + data.error);
@@ -481,7 +467,9 @@ async function startRecording() {
                 if (resp.ok) {
                     chatMessageIds[currentChatId] = [];
                     await loadMessages(currentChatId);
-                    setTimeout(() => loadChats(true), 300);
+                    setTimeout(async () => {
+                        await calculateUnreadCounts();
+                    }, 500);
                 }
             } catch (error) {
                 console.error('Ошибка отправки голосового:', error);
@@ -740,6 +728,9 @@ setInterval(function() {
 
 setInterval(function() {
     loadChats(false);
+    setTimeout(async () => {
+        await calculateUnreadCounts();
+    }, 500);
 }, 10000);
 
 document.addEventListener('visibilitychange', function() {
@@ -748,6 +739,9 @@ document.addEventListener('visibilitychange', function() {
             loadMessages(currentChatId);
         }
         loadChats(false);
+        setTimeout(async () => {
+            await calculateUnreadCounts();
+        }, 500);
     }
 });
 
@@ -756,14 +750,18 @@ window.addEventListener('focus', function() {
         loadMessages(currentChatId);
     }
     loadChats(false);
+    setTimeout(async () => {
+        await calculateUnreadCounts();
+    }, 500);
 });
 
 console.log('🚀 Запуск Nexus, userId:', userId);
 
-// ============ ПЕРВИЧНЫЙ ЗАПУСК ============
-// Сначала загружаем чаты, потом считаем непрочитанные
-loadChats(true).then(async () => {
-    // Даём время на загрузку чатов
-    await new Promise(resolve => setTimeout(resolve, 1000));
+// ============ ПЕРВИЧНЫЙ ЗАПУСК (С ПРАВИЛЬНОЙ ОЧЕРЁДНОСТЬЮ) ============
+(async function init() {
+    console.log('🚀 Инициализация...');
+    await loadChats(true);
+    console.log('✅ Чаты загружены, считаем непрочитанные...');
     await calculateUnreadCounts();
-});
+    console.log('✅ Готово!');
+})();
