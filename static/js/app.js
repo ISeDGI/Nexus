@@ -21,6 +21,7 @@ const recordBtn = document.getElementById('record-btn');
 const userId = window.userId || 0;
 console.log('🚀 Nexus запущен, userId:', userId);
 
+// ============ ПРИЯТНЫЙ ЗВУК ============
 function playNotificationSound() {
     try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -41,6 +42,7 @@ function playNotificationSound() {
     } catch (e) {}
 }
 
+// ============ УВЕДОМЛЕНИЕ ============
 function showBrowserNotification(title, body) {
     if (Notification.permission === 'granted') {
         new Notification('💬 Nexus', { 
@@ -54,6 +56,7 @@ if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
 }
 
+// ============ АВАТАРЫ ============
 function getAvatarHtml(avatar, name) {
     if (avatar) {
         return `<img src="${avatar}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
@@ -61,6 +64,7 @@ function getAvatarHtml(avatar, name) {
     return (name || '?')[0].toUpperCase();
 }
 
+// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ============
 async function updateHeaderAvatar() {
     try {
         const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
@@ -77,6 +81,7 @@ async function updateHeaderAvatar() {
     }
 }
 
+// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ЧАТА ============
 async function updateChatHeaderAvatar(userIdToShow) {
     if (!userIdToShow) {
         if (chatHeaderAvatar) {
@@ -114,6 +119,7 @@ async function updateChatHeaderAvatar(userIdToShow) {
     }
 }
 
+// ============ СЧЁТЧИК НЕПРОЧИТАННЫХ ============
 let unreadCounts = {};
 
 function updateUnreadBadge(chatId, count) {
@@ -130,6 +136,7 @@ function updateUnreadBadge(chatId, count) {
     document.title = totalUnread > 0 ? `(${totalUnread}) Nexus` : 'Nexus';
 }
 
+// ============ ЗАГРУЗКА ЧАТОВ ============
 async function loadChats() {
     try {
         const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
@@ -173,6 +180,7 @@ async function loadChats() {
     }
 }
 
+// ============ ОТКРЫТЬ ЧАТ ============
 function openChat(type, chatId, name, otherUserId = null) {
     currentChatId = chatId;
     currentChatType = type;
@@ -196,6 +204,7 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
+// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
 let lastMessageCount = 0;
 let lastMessageChatId = null;
 let lastMessagesHtml = '';
@@ -307,6 +316,7 @@ async function loadMessages(chatId) {
     }
 }
 
+// ============ ОТПРАВКА ============
 async function sendMessage() {
     if (!currentChatId) {
         alert('Выберите чат');
@@ -338,6 +348,7 @@ async function sendMessage() {
     }
 }
 
+// ============ ФАЙЛЫ ============
 attachBtn.addEventListener('click', () => fileInput.click());
 
 fileInput.addEventListener('change', async function() {
@@ -374,6 +385,7 @@ fileInput.addEventListener('change', async function() {
     this.value = '';
 });
 
+// ============ ГОЛОСОВЫЕ ============
 let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
@@ -438,6 +450,7 @@ function stopRecording() {
     }
 }
 
+// ============ ПОИСК ============
 searchInput.addEventListener('input', async function() {
     const query = this.value.trim();
     if (query.length < 1) {
@@ -473,6 +486,7 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// ============ НАЧАТЬ ЛИЧНЫЙ ЧАТ ============
 async function startPrivateChat(otherUserId, username) {
     const chatId = 'user_' + otherUserId;
     openChat('private', chatId, username, otherUserId);
@@ -481,6 +495,7 @@ async function startPrivateChat(otherUserId, username) {
     await loadChats();
 }
 
+// ============ ГРУППЫ ============
 async function showCreateGroup() {
     document.getElementById('group-modal').style.display = 'flex';
     try {
@@ -526,6 +541,7 @@ function closeModal() {
     document.getElementById('group-name').value = '';
 }
 
+// ============ ПРОФИЛЬ ============
 async function showProfile() {
     const modal = document.getElementById('profile-modal');
     const content = document.getElementById('profile-content');
@@ -645,6 +661,7 @@ function closeProfile() {
     document.getElementById('profile-modal').style.display = 'none';
 }
 
+// ============ ВЫХОД ============
 async function logout() {
     if (confirm('Выйти?')) {
         await fetch('/api/logout', { method: 'POST' });
@@ -652,20 +669,59 @@ async function logout() {
     }
 }
 
+// ============ ОБРАБОТЧИКИ ============
 sendBtn.addEventListener('click', sendMessage);
 msgInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') sendMessage();
 });
 
-setInterval(function() {
+// ============ АВТООБНОВЛЕНИЕ (РАБОТАЕТ НА ТЕЛЕФОНЕ) ============
+let updateInterval = null;
+let chatUpdateInterval = null;
+
+function startAutoUpdate() {
+    // Обновляем сообщения каждые 2 секунды
+    if (updateInterval) clearInterval(updateInterval);
+    updateInterval = setInterval(function() {
+        if (currentChatId) {
+            console.log('🔄 Автообновление сообщений:', currentChatId);
+            loadMessages(currentChatId);
+        }
+    }, 2000);
+    
+    // Обновляем чаты каждые 5 секунд
+    if (chatUpdateInterval) clearInterval(chatUpdateInterval);
+    chatUpdateInterval = setInterval(function() {
+        console.log('🔄 Автообновление списка чатов');
+        loadChats();
+    }, 5000);
+}
+
+// Запускаем автообновление
+startAutoUpdate();
+
+// При переключении вкладки — перезапускаем, чтобы не засыпал
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+        console.log('👁️ Вкладка активна, перезапускаем автообновление');
+        // Перезапускаем интервалы
+        if (currentChatId) {
+            loadMessages(currentChatId);
+        }
+        loadChats();
+        startAutoUpdate();
+    }
+});
+
+// Также при фокусе на странице
+window.addEventListener('focus', function() {
+    console.log('👁️ Фокус на странице');
     if (currentChatId) {
         loadMessages(currentChatId);
     }
-}, 3000);
-
-setInterval(function() {
     loadChats();
-}, 5000);
+});
 
+// ============ ЗАПУСК ============
 console.log('🚀 Запуск Nexus, userId:', userId);
 loadChats();
