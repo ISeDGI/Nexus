@@ -21,6 +21,7 @@ const recordBtn = document.getElementById('record-btn');
 const userId = window.userId || 0;
 console.log('🚀 Nexus запущен, userId:', userId);
 
+// ============ ПРИЯТНЫЙ ЗВУК УВЕДОМЛЕНИЯ ============
 function playNotificationSound() {
     try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -38,22 +39,39 @@ function playNotificationSound() {
             osc.start(now + i * 0.1);
             osc.stop(now + i * 0.1 + 0.15);
         });
-    } catch (e) {}
-}
-
-function showBrowserNotification(title, body) {
-    if (Notification.permission === 'granted') {
-        new Notification('💬 Nexus', { 
-            body: `${title}: ${body}`,
-            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">💬</text></svg>'
-        });
+    } catch (e) {
+        console.log('Звук не поддерживается');
     }
 }
 
-if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
+// ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ ============
+function showBrowserNotification(title, body) {
+    if (Notification.permission === 'granted') {
+        try {
+            const notification = new Notification('💬 Nexus', { 
+                body: `${title}: ${body}`,
+                icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">💬</text></svg>',
+                tag: 'nexus-notification',
+                requireInteraction: false
+            });
+            
+            // Автоматически закрываем через 5 секунд
+            setTimeout(() => notification.close(), 5000);
+        } catch (e) {
+            console.log('Ошибка уведомления:', e);
+        }
+    }
 }
 
+// Запрашиваем разрешение на уведомления при загрузке
+if ('Notification' in window) {
+    if (Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+    console.log('🔔 Разрешение на уведомления:', Notification.permission);
+}
+
+// ============ АВАТАРЫ ============
 function getAvatarHtml(avatar, name) {
     if (avatar) {
         return `<img src="${avatar}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
@@ -61,6 +79,7 @@ function getAvatarHtml(avatar, name) {
     return (name || '?')[0].toUpperCase();
 }
 
+// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ============
 async function updateHeaderAvatar() {
     try {
         const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
@@ -77,6 +96,7 @@ async function updateHeaderAvatar() {
     }
 }
 
+// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ЧАТА ============
 async function updateChatHeaderAvatar(userIdToShow) {
     if (!userIdToShow) {
         if (chatHeaderAvatar) {
@@ -119,17 +139,26 @@ let unreadCounts = {};
 
 function updateUnreadBadge(chatId, count) {
     console.log('🔄 Обновляем бейдж для', chatId, '=', count);
-    const badge = document.querySelector(`.chat-item[data-chat-id="${chatId}"] .unread-badge`);
-    if (badge) {
-        if (count > 0) {
-            badge.textContent = count > 99 ? '99+' : count;
-            badge.style.display = 'inline-block';
-        } else {
-            badge.style.display = 'none';
-        }
-    } else {
-        console.log('⚠️ Бейдж не найден для', chatId);
+    const chatItem = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
+    if (!chatItem) {
+        console.log('⚠️ Элемент чата не найден для', chatId);
+        return;
     }
+    
+    // Удаляем старый бейдж, если есть
+    const oldBadge = chatItem.querySelector('.unread-badge');
+    if (oldBadge) oldBadge.remove();
+    
+    if (count > 0) {
+        const badge = document.createElement('span');
+        badge.className = 'unread-badge';
+        badge.textContent = count > 99 ? '99+' : count;
+        // Находим контейнер с именем и добавляем бейдж
+        const nameContainer = chatItem.querySelector('.chat-name')?.parentElement || chatItem;
+        nameContainer.appendChild(badge);
+        console.log('✅ Бейдж добавлен для', chatId, ':', count);
+    }
+    
     const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
     document.title = totalUnread > 0 ? `(${totalUnread}) Nexus` : 'Nexus';
 }
@@ -178,6 +207,7 @@ async function loadChats() {
     }
 }
 
+// ============ ОТКРЫТЬ ЧАТ ============
 function openChat(type, chatId, name, otherUserId = null) {
     currentChatId = chatId;
     currentChatType = type;
@@ -202,7 +232,7 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ (С ПРАВИЛЬНЫМ СЧЁТЧИКОМ) ============
+// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
 let lastMessageIds = [];
 
 async function loadMessages(chatId) {
@@ -218,7 +248,7 @@ async function loadMessages(chatId) {
         const messages = await resp.json();
         console.log('📨 Получено сообщений:', messages.length);
         
-        // === СЧЁТЧИК НЕПРОЧИТАННЫХ (по ID) ===
+        // === СЧЁТЧИК НЕПРОЧИТАННЫХ ===
         const currentIds = messages.map(m => m.id);
         const newIds = currentIds.filter(id => !lastMessageIds.includes(id));
         
@@ -232,15 +262,18 @@ async function loadMessages(chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                 }
-                // Звук и уведомление (только если чат не открыт)
-                if (currentChatId !== chatId) {
-                    const lastMsg = unread[unread.length - 1];
-                    playNotificationSound();
-                    showBrowserNotification(
-                        lastMsg.display_name || lastMsg.username,
-                        lastMsg.text || '📎 Файл'
-                    );
-                }
+                // ЗВУК И УВЕДОМЛЕНИЕ (всегда, если сообщение от другого)
+                const lastMsg = unread[unread.length - 1];
+                console.log('🔔 Новое сообщение от:', lastMsg.display_name || lastMsg.username);
+                
+                // Воспроизводим звук
+                playNotificationSound();
+                
+                // Отправляем уведомление в браузер
+                showBrowserNotification(
+                    lastMsg.display_name || lastMsg.username,
+                    lastMsg.text || '📎 Файл'
+                );
             }
         }
         lastMessageIds = currentIds;
