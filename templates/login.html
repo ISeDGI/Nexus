@@ -18,9 +18,10 @@
         input:focus { border-color: #007AFF; }
         button { width: 100%; padding: 12px; background: #007AFF; color: white; border: none; border-radius: 10px; font-size: 16px; cursor: pointer; }
         button:hover { background: #0055b3; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
         .error { color: red; text-align: center; margin-bottom: 10px; font-size: 14px; }
         .success { color: green; text-align: center; margin-bottom: 10px; font-size: 14px; }
-        .loading { color: #007AFF; text-align: center; margin-bottom: 10px; font-size: 14px; }
+        .loading { color: #007AFF; text-align: center; margin-bottom: 10px; font-size: 14px; display: none; }
     </style>
 </head>
 <body>
@@ -32,7 +33,7 @@
         </div>
         <div id="login-form" class="form active">
             <div id="login-error" class="error"></div>
-            <div id="login-loading" class="loading" style="display:none;">⏳ Вход...</div>
+            <div id="login-loading" class="loading">⏳ Вход...</div>
             <input type="text" id="login-username" placeholder="Никнейм">
             <input type="password" id="login-password" placeholder="Пароль">
             <button id="login-btn" onclick="login()">Войти</button>
@@ -60,6 +61,7 @@
             document.getElementById('login-error').textContent = '';
             document.getElementById('register-error').textContent = '';
             document.getElementById('register-success').textContent = '';
+            document.getElementById('login-loading').style.display = 'none';
         }
 
         async function login() {
@@ -92,9 +94,9 @@
                 console.log('📨 Ответ сервера:', data);
                 
                 if (resp.ok) {
-                    console.log('✅ Вход успешен!');
-                    loadingEl.textContent = '✅ Перенаправление...';
-                    window.location.href = '/';
+                    console.log('✅ Вход успешен! Перенаправляем...');
+                    // === ПЕРЕНАПРАВЛЕНИЕ ===
+                    window.location.replace('/');
                 } else {
                     errorEl.textContent = data.error || 'Неверный логин или пароль';
                     loadingEl.style.display = 'none';
