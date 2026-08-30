@@ -21,6 +21,8 @@ def index():
         return render_template('login.html')
     return render_template('chat.html', user_id=session['user_id'], username=session['username'])
 
+# ============ АВТОРИЗАЦИЯ ============
+
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.get_json()
@@ -68,6 +70,8 @@ def logout():
     session.clear()
     return jsonify({'status': 'ok'})
 
+# ============ ПОИСК ПОЛЬЗОВАТЕЛЕЙ ============
+
 @app.route('/api/users', methods=['GET'])
 def get_users():
     if 'user_id' not in session:
@@ -75,12 +79,19 @@ def get_users():
     
     search = request.args.get('search', '')
     db = get_db()
+    
+    # Ищем по username ИЛИ display_name
     users = db.execute(
-        'SELECT id, username, display_name FROM users WHERE username LIKE ? AND id != ?',
-        (f'%{search}%', session['user_id'])
+        '''SELECT id, username, display_name 
+           FROM users 
+           WHERE (username LIKE ? OR display_name LIKE ?) 
+           AND id != ?''',
+        (f'%{search}%', f'%{search}%', session['user_id'])
     ).fetchall()
     db.close()
     return jsonify([dict(u) for u in users])
+
+# ============ СООБЩЕНИЯ ============
 
 @app.route('/api/send', methods=['POST'])
 def send_message():
@@ -117,6 +128,61 @@ def get_messages(chat_id):
     db.close()
     return jsonify([dict(m) for m in messages])
 
+# ============ ЧАТЫ ============
+
+@app.route('/api/chats', methods=['GET'])
+def get_chats():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    
+    user_id = session['user_id']
+    db = get_db()
+    
+    # ЛИЧНЫЕ ЧАТЫ (все пользователи, с кем есть сообщения)
+    private_chats = db.execute('''
+        SELECT DISTINCT 
+            CASE 
+                WHEN m.sender_id = ? THEN 
+                    CASE WHEN m.sender_id = u1.id THEN u2.id ELSE u1.id END
+                ELSE 
+                    CASE WHEN m.sender_id = u1.id THEN u2.id ELSE u1.id END
+            END as user_id,
+            u.username,
+            u.display_name
+        FROM messages m
+        JOIN users u1 ON m.sender_id = u1.id
+        JOIN users u2 ON m.sender_id = u2.id
+        JOIN users u ON u.id = (
+            CASE 
+                WHEN m.sender_id = ? THEN 
+                    CASE WHEN m.sender_id = u1.id THEN u2.id ELSE u1.id END
+                ELSE 
+                    CASE WHEN m.sender_id = u1.id THEN u2.id ELSE u1.id END
+            END
+        )
+        WHERE m.chat_type = 'private' 
+        AND (m.sender_id = ? OR m.sender_id IN (
+            SELECT sender_id FROM messages WHERE chat_type = 'private'
+        ))
+    ''', (user_id, user_id, user_id)).fetchall()
+    
+    # ГРУППЫ
+    groups = db.execute('''
+        SELECT g.id, g.name, g.created_by, u.username as creator
+        FROM groups g
+        JOIN group_members gm ON g.id = gm.group_id
+        JOIN users u ON g.created_by = u.id
+        WHERE gm.user_id = ?
+    ''', (user_id,)).fetchall()
+    
+    db.close()
+    return jsonify({
+        'private': [dict(p) for p in private_chats],
+        'groups': [dict(g) for g in groups]
+    })
+
+# ============ ГРУППЫ ============
+
 @app.route('/api/create_group', methods=['POST'])
 def create_group():
     if 'user_id' not in session:
@@ -146,44 +212,7 @@ def create_group():
     db.close()
     return jsonify({'group_id': group_id, 'group_name': group_name})
 
-@app.route('/api/chats', methods=['GET'])
-def get_chats():
-    if 'user_id' not in session:
-        return jsonify({'error': 'Не авторизован'}), 401
-    
-    user_id = session['user_id']
-    db = get_db()
-    
-    private_chats = db.execute('''
-        SELECT DISTINCT 
-            CASE 
-                WHEN m.sender_id = ? THEN u2.id
-                ELSE u1.id
-            END as user_id,
-            u.username,
-            u.display_name
-        FROM messages m
-        JOIN users u1 ON m.sender_id = u1.id
-        JOIN users u2 ON m.sender_id = u2.id
-        WHERE m.chat_type = 'private' 
-        AND (m.sender_id = ? OR m.sender_id IN (
-            SELECT sender_id FROM messages WHERE chat_type = 'private'
-        ))
-    ''', (user_id, user_id)).fetchall()
-    
-    groups = db.execute('''
-        SELECT g.id, g.name, g.created_by, u.username as creator
-        FROM groups g
-        JOIN group_members gm ON g.id = gm.group_id
-        JOIN users u ON g.created_by = u.id
-        WHERE gm.user_id = ?
-    ''', (user_id,)).fetchall()
-    
-    db.close()
-    return jsonify({
-        'private': [dict(p) for p in private_chats],
-        'groups': [dict(g) for g in groups]
-    })
+# ============ ПРОФИЛЬ ============
 
 @app.route('/api/update_display_name', methods=['POST'])
 def update_display_name():
@@ -201,6 +230,8 @@ def update_display_name():
     db.commit()
     db.close()
     return jsonify({'status': 'ok'})
+
+# ============ ЗАПУСК ============
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
