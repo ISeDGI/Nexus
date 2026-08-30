@@ -46,21 +46,18 @@ function playNotificationSound() {
 function showBrowserNotification(title, body) {
     if (Notification.permission === 'granted') {
         try {
-            const notification = new Notification('💬 Nexus', { 
+            new Notification('💬 Nexus', { 
                 body: `${title}: ${body}`,
                 icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">💬</text></svg>',
                 tag: 'nexus-notification',
                 requireInteraction: false
             });
-            setTimeout(() => notification.close(), 5000);
         } catch (e) {}
     }
 }
 
-if ('Notification' in window) {
-    if (Notification.permission === 'default') {
-        Notification.requestPermission();
-    }
+if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
 }
 
 // ============ АВАТАРЫ ============
@@ -229,7 +226,7 @@ async function loadMessages(chatId) {
         
         const messages = await resp.json();
         
-        // === СЧЁТЧИК НЕПРОЧИТАННЫХ + ЗВУК + УВЕДОМЛЕНИЕ ===
+        // === СЧЁТЧИК НЕПРОЧИТАННЫХ ===
         const currentIds = messages.map(m => m.id);
         const newIds = currentIds.filter(id => !lastMessageIds.includes(id));
         
@@ -243,7 +240,7 @@ async function loadMessages(chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                 }
-                // ЗВУК И УВЕДОМЛЕНИЕ
+                // ЗВУК + УВЕДОМЛЕНИЕ
                 const lastMsg = unread[unread.length - 1];
                 playNotificationSound();
                 showBrowserNotification(
