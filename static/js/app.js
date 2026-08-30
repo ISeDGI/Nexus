@@ -134,7 +134,7 @@ function updateUnreadBadge(chatId, count) {
     document.title = totalUnread > 0 ? `(${totalUnread}) Nexus` : 'Nexus';
 }
 
-// ============ ПОДСЧЁТ НЕПРОЧИТАННЫХ (ПО ID) ============
+// ============ ПОДСЧЁТ НЕПРОЧИТАННЫХ ============
 async function calculateUnreadCounts() {
     try {
         const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
@@ -225,6 +225,28 @@ async function loadChats(force = false) {
 }
 
 function openChat(type, chatId, name, otherUserId = null) {
+    // ЗАПОМИНАЕМ ПОСЛЕДНИЙ ID ПЕРЕД ОТКРЫТИЕМ ЧАТА
+    // Это нужно, чтобы когда мы закроем чат, бейдж считал только те сообщения,
+    // которые пришли ПОСЛЕ этого момента
+    if (currentChatId !== chatId) {
+        // Если переключаемся на другой чат, обновляем lastRead для старого чата
+        // на основе текущих сообщений в DOM
+        const oldMessages = messagesDiv.querySelectorAll('.message');
+        if (oldMessages.length > 0 && currentChatId) {
+            // Запоминаем, что мы прочитали все сообщения в старом чате
+            // Для этого нужно получить последний ID из БД для старого чата
+            fetch(`/api/messages/${currentChatId}?user_id=${userId}&t=${Date.now()}`)
+                .then(r => r.json())
+                .then(messages => {
+                    if (messages.length > 0) {
+                        lastReadMessageIds[currentChatId] = messages[messages.length - 1].id;
+                        console.log('📖 lastRead для', currentChatId, 'обновлён на', messages[messages.length - 1].id);
+                    }
+                })
+                .catch(e => console.error('Ошибка обновления lastRead:', e));
+        }
+    }
+    
     currentChatId = chatId;
     currentChatType = type;
     currentChatName = name;
@@ -233,25 +255,36 @@ function openChat(type, chatId, name, otherUserId = null) {
     
     updateChatHeaderAvatar(otherUserId);
     
-    // При открытии чата — обновляем lastReadId до текущего последнего сообщения
-    // Сначала сбрасываем счётчик
+    // Сбрасываем счётчик для открываемого чата
     delete unreadCounts[chatId];
     updateUnreadBadge(chatId, 0);
     
-    // Загружаем сообщения, чтобы обновить lastReadId
-    loadMessages(chatId, true);
+    // При открытии чата обновляем lastReadId до текущего последнего сообщения
+    fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`)
+        .then(r => r.json())
+        .then(messages => {
+            if (messages.length > 0) {
+                lastReadMessageIds[chatId] = messages[messages.length - 1].id;
+                console.log('📖 lastRead для открытого чата', chatId, 'установлен на', messages[messages.length - 1].id);
+            }
+            // После обновления lastRead пересчитываем счётчики
+            setTimeout(() => calculateUnreadCounts(), 300);
+        })
+        .catch(e => console.error('Ошибка:', e));
     
     document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
     if (event && event.target) {
         const item = event.target.closest('.chat-item');
         if (item) item.classList.add('active');
     }
+    
+    loadMessages(chatId);
 }
 
 // ============ ЗАГРУЗКА СООБЩЕНИЙ ============
 let chatMessageIds = {};
 
-async function loadMessages(chatId, isOpening = false) {
+async function loadMessages(chatId) {
     try {
         const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
         if (!resp.ok) {
@@ -260,13 +293,6 @@ async function loadMessages(chatId, isOpening = false) {
         }
         
         const messages = await resp.json();
-        
-        // Если это открытие чата — обновляем lastReadId до последнего ID
-        if (isOpening && messages.length > 0) {
-            const lastId = messages[messages.length - 1].id;
-            lastReadMessageIds[chatId] = lastId;
-            console.log('📖 lastRead для', chatId, 'установлен на', lastId);
-        }
         
         const currentIds = messages.map(m => m.id);
         const oldIds = chatMessageIds[chatId] || [];
@@ -285,6 +311,7 @@ async function loadMessages(chatId, isOpening = false) {
                     // Если чат открыт — обновляем lastReadId
                     const lastId = messages[messages.length - 1].id;
                     lastReadMessageIds[chatId] = lastId;
+                    console.log('📖 lastRead обновлён для открытого чата', chatId, ':', lastId);
                 }
                 const lastMsg = unread[unread.length - 1];
                 showBrowserNotification(
@@ -724,7 +751,6 @@ setInterval(function() {
     }
 }, 3000);
 
-// Убираем автообновление счётчиков, чтобы не сбрасывалось
 setInterval(function() {
     loadChats(false);
 }, 10000);
@@ -750,6 +776,5 @@ console.log('🚀 Запуск Nexus, userId:', userId);
 // ============ ПЕРВИЧНЫЙ ЗАПУСК ============
 (async function init() {
     await loadChats(true);
-    // Не считаем непрочитанные при запуске, чтобы не показывать старые сообщения
     console.log('✅ Готово!');
 })();
