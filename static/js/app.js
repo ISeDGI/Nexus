@@ -124,7 +124,6 @@ async function loadChats() {
             </div>
         `).join('');
         
-        // Обновляем аватарку в шапке после загрузки чатов
         updateHeaderAvatar();
     } catch (error) {
         console.error('Ошибка загрузки чатов:', error);
@@ -153,7 +152,7 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ (С АВАТАРКАМИ) ============
+// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
 let lastMessageCount = 0;
 let lastMessageChatId = null;
 let lastMessagesHtml = '';
@@ -167,7 +166,6 @@ async function loadMessages(chatId) {
         }
         const messages = await resp.json();
         
-        // === СЧЁТЧИК НЕПРОЧИТАННЫХ ===
         if (lastMessageChatId === chatId && messages.length > lastMessageCount) {
             const newMessages = messages.slice(lastMessageCount);
             const unread = newMessages.filter(msg => msg.sender_id != userId);
@@ -217,7 +215,6 @@ async function loadMessages(chatId) {
                 }
             }
             
-            // === АВАТАРКА В СООБЩЕНИЯХ (только для чужих) ===
             const avatarHtml = !isOwn ? `<div class="chat-avatar" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${getAvatarHtml(msg.avatar, msg.display_name || msg.username)}</div>` : '';
             
             html += `<div class="message ${isOwn ? 'own' : 'other'}">
