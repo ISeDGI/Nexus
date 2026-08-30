@@ -18,18 +18,52 @@ const recordBtn = document.getElementById('record-btn');
 const userId = window.userId || 0;
 console.log('🚀 Приложение запущено, userId:', userId);
 
+// ============ ЗВУК УВЕДОМЛЕНИЯ ============
+function playNotificationSound() {
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        gainNode.gain.value = 0.3;
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.15);
+    } catch (e) {
+        console.log('Звук не поддерживается');
+    }
+}
+
+// ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ ============
+function showBrowserNotification(title, body) {
+    if (Notification.permission === 'granted') {
+        new Notification(title, { body, icon: '/static/icons/icon-192.png' });
+    } else if (Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+}
+
+// Запрашиваем разрешение на уведомления
+if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+}
+
 // ============ АВАТАРЫ ============
 function getAvatarHtml(avatar, name) {
     if (avatar) {
-        return `<img src="${avatar}" alt="${name}">`;
+        return `<img src="${avatar}?t=${Date.now()}" alt="${name}">`;
     }
     return (name || '?')[0].toUpperCase();
 }
 
-// ============ ЗАГРУЗКА ЧАТОВ ============
+// ============ ЗАГРУЗКА ЧАТОВ (С ПРИНУДИТЕЛЬНЫМ ОБНОВЛЕНИЕМ АВАТАРОК) ============
+let lastChatsUpdate = 0;
+
 async function loadChats() {
     try {
-        const resp = await fetch(`/api/chats?user_id=${userId}`);
+        const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
         const data = await resp.json();
         console.log('Чаты загружены:', data);
         
@@ -46,6 +80,8 @@ async function loadChats() {
                 ${g.name}
             </div>
         `).join('');
+        
+        lastChatsUpdate = Date.now();
     } catch (error) {
         console.error('Ошибка загрузки чатов:', error);
     }
@@ -70,10 +106,13 @@ function openChat(type, chatId, name, otherUserId = null) {
 }
 
 // ============ ЗАГРУЗКА СООБЩЕНИЙ ============
+let lastMessageCount = 0;
+let lastMessageChatId = null;
+
 async function loadMessages(chatId) {
     console.log('📨 Загружаем сообщения для:', chatId);
     try {
-        const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}`);
+        const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
         if (!resp.ok) {
             messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">Ошибка загрузки</div>';
             return;
@@ -81,7 +120,25 @@ async function loadMessages(chatId) {
         const messages = await resp.json();
         console.log('📨 Получено сообщений:', messages.length);
         
+        // === УВЕДОМЛЕНИЕ О НОВЫХ СООБЩЕНИЯХ ===
+        if (lastMessageChatId === chatId && messages.length > lastMessageCount && lastMessageCount > 0) {
+            const newMessages = messages.slice(lastMessageCount);
+            const lastMsg = newMessages[newMessages.length - 1];
+            if (lastMsg && lastMsg.sender_id != userId) {
+                playNotificationSound();
+                showBrowserNotification(
+                    `${lastMsg.display_name || lastMsg.username}`,
+                    lastMsg.text || 'Новое сообщение'
+                );
+            }
+        }
+        lastMessageCount = messages.length;
+        lastMessageChatId = chatId;
+        
         if (messages.length === 0) {
+            if (messagesDiv.innerHTML.trim() === '' || messagesDiv.innerHTML.includes('Нет сообщений')) {
+                return;
+            }
             messagesDiv.innerHTML = '<div style="color:#999;text-align:center;padding:20px;">Нет сообщений</div>';
             return;
         }
@@ -359,7 +416,7 @@ async function showProfile() {
     modal.style.display = 'flex';
     
     try {
-        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}`);
+        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
         const user = await resp.json();
         
         content.innerHTML = `
@@ -399,8 +456,9 @@ async function uploadAvatar(file) {
         const data = await resp.json();
         if (resp.ok) {
             alert('Аватар обновлён!');
+            // Принудительно обновляем чаты у всех пользователей
+            await loadChats();
             closeProfile();
-            loadChats();
         } else {
             alert(data.error || 'Ошибка загрузки');
         }
@@ -451,10 +509,11 @@ msgInput.addEventListener('keydown', function(e) {
 // ============ АВТООБНОВЛЕНИЕ ============
 setInterval(function() {
     if (currentChatId) {
-        console.log('🔄 Автообновление чата:', currentChatId);
         loadMessages(currentChatId);
     }
-}, 2000);
+    // Обновляем список чатов каждые 10 секунд (для аватарок)
+    loadChats();
+}, 5000);
 
 // ============ ЗАПУСК ============
 console.log('🚀 Запуск приложения, userId:', userId);
