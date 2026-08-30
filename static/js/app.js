@@ -11,9 +11,20 @@ const groupChatsDiv = document.getElementById('group-chats');
 const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
 const currentChatNameSpan = document.getElementById('current-chat-name');
+const fileInput = document.getElementById('file-input');
+const attachBtn = document.getElementById('attach-btn');
+const recordBtn = document.getElementById('record-btn');
 
 const userId = window.userId || 0;
 console.log('🚀 Приложение запущено, userId:', userId);
+
+// ============ АВАТАРЫ ============
+function getAvatarHtml(avatar, name) {
+    if (avatar) {
+        return `<img src="${avatar}" alt="${name}">`;
+    }
+    return (name || '?')[0].toUpperCase();
+}
 
 // ============ ЗАГРУЗКА ЧАТОВ ============
 async function loadChats() {
@@ -24,7 +35,7 @@ async function loadChats() {
         
         privateChatsDiv.innerHTML = data.private.map(p => `
             <div class="chat-item" onclick="openChat('private', 'user_${p.id}', '${p.display_name || p.username}', ${p.id})">
-                <div class="chat-avatar">${(p.display_name || p.username)[0].toUpperCase()}</div>
+                <div class="chat-avatar">${getAvatarHtml(p.avatar, p.display_name || p.username)}</div>
                 ${p.display_name || p.username}
             </div>
         `).join('');
@@ -78,9 +89,26 @@ async function loadMessages(chatId) {
         let html = '';
         messages.forEach(msg => {
             const isOwn = msg.sender_id == userId;
+            let content = msg.text || '';
+            
+            // Файлы
+            if (msg.file_path) {
+                const ext = msg.file_path.split('.').pop().toLowerCase();
+                const fileUrl = msg.file_path;
+                if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
+                    content = `<img src="${fileUrl}" alt="Изображение" style="max-width:200px;border-radius:10px;display:block;margin-top:4px;">`;
+                } else if (['mp4', 'webm', 'mov'].includes(ext)) {
+                    content = `<video src="${fileUrl}" controls style="max-width:200px;border-radius:10px;display:block;margin-top:4px;"></video>`;
+                } else if (['mp3', 'wav', 'ogg', 'webm'].includes(ext) && !['mp4'].includes(ext)) {
+                    content = `<audio src="${fileUrl}" controls style="width:150px;height:40px;margin-top:4px;"></audio>`;
+                } else {
+                    content = `<a href="${fileUrl}" download style="display:inline-block;padding:6px 12px;background:#f1f3f5;border-radius:8px;text-decoration:none;color:#25D366;font-size:13px;margin-top:4px;">📎 Скачать файл</a>`;
+                }
+            }
+            
             html += `<div class="message ${isOwn ? 'own' : 'other'}">
                 <span class="msg-username">${msg.display_name || msg.username}</span>
-                ${msg.text}
+                ${content}
                 <span class="msg-time">${new Date(msg.timestamp).toLocaleTimeString()}</span>
             </div>`;
         });
@@ -130,7 +158,109 @@ async function sendMessage() {
     }
 }
 
-// ============ ПОИСК ПОЛЬЗОВАТЕЛЕЙ ============
+// ============ ФАЙЛЫ ============
+attachBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', async function() {
+    if (!currentChatId) {
+        alert('Выберите чат');
+        this.value = '';
+        return;
+    }
+    
+    const files = this.files;
+    if (!files.length) return;
+    
+    for (const file of files) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('chat_id', currentChatId);
+        formData.append('chat_type', currentChatType || 'private');
+        
+        try {
+            const resp = await fetch(`/api/upload?user_id=${userId}`, {
+                method: 'POST',
+                body: formData
+            });
+            if (resp.ok) {
+                loadMessages(currentChatId);
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки файла:', error);
+        }
+    }
+    this.value = '';
+});
+
+// ============ ГОЛОСОВЫЕ ============
+let mediaRecorder;
+let audioChunks = [];
+let isRecording = false;
+
+recordBtn.addEventListener('mousedown', startRecording);
+recordBtn.addEventListener('mouseup', stopRecording);
+recordBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); });
+recordBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); });
+
+async function startRecording() {
+    if (!currentChatId) {
+        alert('Выберите чат');
+        return;
+    }
+    
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+        };
+        
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const file = new File([audioBlob], 'voice.webm', { type: 'audio/webm' });
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('chat_id', currentChatId);
+            formData.append('chat_type', currentChatType || 'private');
+            
+            try {
+                const resp = await fetch(`/api/upload?user_id=${userId}`, {
+                    method: 'POST',
+                    body: formData
+                });
+                if (resp.ok) {
+                    loadMessages(currentChatId);
+                }
+            } catch (error) {
+                console.error('Ошибка отправки голосового:', error);
+            }
+            
+            stream.getTracks().forEach(track => track.stop());
+            isRecording = false;
+            recordBtn.classList.remove('recording');
+            recordBtn.textContent = '🎤';
+        };
+        
+        mediaRecorder.start();
+        isRecording = true;
+        recordBtn.classList.add('recording');
+        recordBtn.textContent = '⏺';
+    } catch (error) {
+        console.error('Ошибка записи:', error);
+        alert('Нет доступа к микрофону');
+    }
+}
+
+function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive' && isRecording) {
+        mediaRecorder.stop();
+    }
+}
+
+// ============ ПОИСК ============
 searchInput.addEventListener('input', async function() {
     const query = this.value.trim();
     if (query.length < 1) {
@@ -233,18 +363,50 @@ async function showProfile() {
         const user = await resp.json();
         
         content.innerHTML = `
-            <div style="margin-bottom:15px;">
-                <label style="font-weight:500;display:block;margin-bottom:5px;">Отображаемое имя</label>
-                <input type="text" id="profile-name" value="${user.display_name || ''}" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;">
+            <div style="text-align:center;margin-bottom:20px;">
+                <div class="avatar-preview" onclick="document.getElementById('avatar-input').click()">
+                    ${getAvatarHtml(user.avatar, user.display_name || user.username)}
+                </div>
+                <input type="file" id="avatar-input" style="display:none" accept="image/png,image/jpeg,image/gif,image/webp" onchange="uploadAvatar(this.files[0])">
+                <div style="font-size:12px;color:#999;">Нажми на аватар, чтобы изменить</div>
             </div>
-            <div style="margin-bottom:15px;">
+            <div>
+                <label style="font-weight:500;display:block;margin-bottom:5px;">Имя</label>
+                <input type="text" id="profile-name" value="${user.display_name || ''}">
+            </div>
+            <div>
                 <label style="font-weight:500;display:block;margin-bottom:5px;">О себе</label>
-                <textarea id="profile-bio" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;resize:vertical;min-height:60px;">${user.bio || ''}</textarea>
+                <textarea id="profile-bio" style="resize:vertical;min-height:60px;">${user.bio || ''}</textarea>
             </div>
-            <button onclick="saveProfile()" style="width:100%;padding:10px;background:#007AFF;color:white;border:none;border-radius:10px;cursor:pointer;">Сохранить</button>
+            <button onclick="saveProfile()" style="width:100%;background:#25D366;color:white;margin-top:10px;">Сохранить</button>
         `;
     } catch (error) {
         content.innerHTML = '<div style="color:red;">Ошибка загрузки профиля</div>';
+    }
+}
+
+async function uploadAvatar(file) {
+    if (!file) return;
+    
+    const formData = new FormData();
+    formData.append('avatar', file);
+    
+    try {
+        const resp = await fetch(`/api/upload_avatar?user_id=${userId}`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            alert('Аватар обновлён!');
+            closeProfile();
+            loadChats();
+        } else {
+            alert(data.error || 'Ошибка загрузки');
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки аватара:', error);
+        alert('Ошибка загрузки');
     }
 }
 

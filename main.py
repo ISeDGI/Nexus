@@ -95,7 +95,7 @@ def get_users():
         search = request.args.get('search', '')
         db = get_db()
         users = db.execute(
-            'SELECT id, username, display_name FROM users WHERE username LIKE ? AND id != ?',
+            'SELECT id, username, display_name, avatar FROM users WHERE username LIKE ? AND id != ?',
             (f'%{search}%', user_id)
         ).fetchall()
         db.close()
@@ -124,6 +124,7 @@ def get_profile(user_id):
         
         return jsonify(dict(user))
     except Exception as e:
+        print(f"❌ Ошибка в get_profile: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/update_profile', methods=['POST'])
@@ -137,6 +138,8 @@ def update_profile():
         display_name = data.get('display_name')
         bio = data.get('bio')
         
+        print(f"📝 Обновление профиля: user_id={user_id}, display_name={display_name}, bio={bio}")
+        
         db = get_db()
         db.execute(
             'UPDATE users SET display_name = ?, bio = ? WHERE id = ?',
@@ -144,8 +147,10 @@ def update_profile():
         )
         db.commit()
         db.close()
+        print("✅ Профиль обновлён")
         return jsonify({'status': 'ok'})
     except Exception as e:
+        print(f"❌ Ошибка в update_profile: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # ============ СООБЩЕНИЯ ============
@@ -169,7 +174,6 @@ def send_message():
         
         db = get_db()
         
-        # Сохраняем в оба чата
         db.execute(
             'INSERT INTO messages (sender_id, chat_id, chat_type, text) VALUES (?, ?, ?, ?)',
             (user_id, chat_id, chat_type, text)
@@ -188,7 +192,7 @@ def send_message():
         print("✅ Сообщение сохранено")
         return jsonify({'status': 'ok'})
     except Exception as e:
-        print(f"❌ Ошибка: {str(e)}")
+        print(f"❌ Ошибка в send_message: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/messages/<chat_id>', methods=['GET'])
@@ -209,6 +213,7 @@ def get_messages(chat_id):
         db.close()
         return jsonify([dict(m) for m in messages])
     except Exception as e:
+        print(f"❌ Ошибка в get_messages: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/chats', methods=['GET'])
@@ -239,7 +244,7 @@ def get_chats():
         for row in private_chats:
             if row['user_id']:
                 user = db.execute(
-                    'SELECT id, username, display_name FROM users WHERE id = ?',
+                    'SELECT id, username, display_name, avatar FROM users WHERE id = ?',
                     (row['user_id'],)
                 ).fetchone()
                 if user:
@@ -259,7 +264,7 @@ def get_chats():
             'groups': [dict(g) for g in groups]
         })
     except Exception as e:
-        print(f"❌ Ошибка в /api/chats: {str(e)}")
+        print(f"❌ Ошибка в get_chats: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/create_group', methods=['POST'])
@@ -293,6 +298,7 @@ def create_group():
         db.close()
         return jsonify({'group_id': group_id, 'group_name': group_name})
     except Exception as e:
+        print(f"❌ Ошибка в create_group: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
