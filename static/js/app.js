@@ -1,6 +1,7 @@
 let currentChatId = null;
 let currentChatType = null;
 let currentChatName = '';
+let currentChatUserId = null;
 
 const messagesDiv = document.getElementById('messages');
 const msgInput = document.getElementById('msg-input');
@@ -11,29 +12,25 @@ const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
 const currentChatNameSpan = document.getElementById('current-chat-name');
 
-// Получить ID пользователя из HTML
 const userId = window.userId || 0;
+console.log('🚀 Приложение запущено, userId:', userId);
 
-// ============ ЗАГРУЗКА ЧАТОВ ============
+// Загрузка чатов
 async function loadChats() {
     try {
-        const resp = await fetch('/api/chats');
-        if (!resp.ok) {
-            console.error('Ошибка загрузки чатов:', resp.status);
-            return;
-        }
+        const resp = await fetch(`/api/chats?user_id=${userId}`);
         const data = await resp.json();
         console.log('Чаты загружены:', data);
         
         privateChatsDiv.innerHTML = data.private.map(p => `
-            <div class="chat-item" onclick="openChat('private', 'user_${p.id}', '${p.display_name || p.username}')">
+            <div class="chat-item" onclick="openChat('private', 'user_${p.id}', '${p.display_name || p.username}', ${p.id})">
                 ${p.display_name || p.username}
             </div>
         `).join('');
         
         groupChatsDiv.innerHTML = data.groups.map(g => `
             <div class="chat-item" onclick="openChat('group', 'group_${g.id}', '${g.name}')">
-                ${g.name} (${g.creator})
+                ${g.name}
             </div>
         `).join('');
     } catch (error) {
@@ -41,34 +38,45 @@ async function loadChats() {
     }
 }
 
-// ============ ОТКРЫТЬ ЧАТ ============
-function openChat(type, chatId, name) {
+// Открыть чат
+function openChat(type, chatId, name, otherUserId = null) {
     console.log('Открываем чат:', chatId, name);
     currentChatId = chatId;
     currentChatType = type;
     currentChatName = name;
+    currentChatUserId = otherUserId;
     currentChatNameSpan.textContent = name;
+    
+    document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
+    if (event && event.target) {
+        const item = event.target.closest('.chat-item');
+        if (item) item.classList.add('active');
+    }
     
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
+// Загрузить сообщения
 async function loadMessages(chatId) {
     try {
-        const resp = await fetch(`/api/messages/${chatId}`);
+        const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}`);
         if (!resp.ok) {
-            console.error('Ошибка загрузки сообщений:', resp.status);
-            messagesDiv.innerHTML = `<div style="color:red;">Ошибка загрузки сообщений (${resp.status})</div>`;
+            messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">Ошибка загрузки</div>';
             return;
         }
         const messages = await resp.json();
         console.log('Сообщения:', messages);
         
+        if (messages.length === 0) {
+            messagesDiv.innerHTML = '<div style="color:#999;text-align:center;padding:20px;">Нет сообщений</div>';
+            return;
+        }
+        
         messagesDiv.innerHTML = messages.map(msg => {
             const isOwn = msg.sender_id == userId;
-            return `<div class="message ${isOwn ? 'own' : ''}">
+            return `<div class="message ${isOwn ? 'own' : 'other'}">
                 <span class="msg-username">${msg.display_name || msg.username}</span>
-                <span class="msg-text">${msg.text}</span>
+                ${msg.text}
                 <span class="msg-time">${new Date(msg.timestamp).toLocaleTimeString()}</span>
             </div>`;
         }).join('');
@@ -76,11 +84,11 @@ async function loadMessages(chatId) {
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     } catch (error) {
         console.error('Ошибка загрузки сообщений:', error);
-        messagesDiv.innerHTML = `<div style="color:red;">Ошибка: ${error.message}</div>`;
+        messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">Ошибка загрузки</div>';
     }
 }
 
-// ============ ОТПРАВКА СООБЩЕНИЯ ============
+// Отправить сообщение
 async function sendMessage() {
     if (!currentChatId) {
         alert('Выберите чат');
@@ -91,41 +99,40 @@ async function sendMessage() {
     if (!text) return;
     
     try {
-        const resp = await fetch('/api/send', {
+        const resp = await fetch(`/api/send?user_id=${userId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 chat_id: currentChatId,
-                chat_type: currentChatType,
+                chat_type: currentChatType || 'private',
                 text: text
             })
         });
-        if (!resp.ok) {
-            console.error('Ошибка отправки:', resp.status);
-            return;
+        const data = await resp.json();
+        console.log('Ответ отправки:', data);
+        
+        if (resp.ok) {
+            msgInput.value = '';
+            loadMessages(currentChatId);
+        } else {
+            alert('Ошибка отправки: ' + data.error);
         }
-        msgInput.value = '';
-        loadMessages(currentChatId);
     } catch (error) {
         console.error('Ошибка отправки:', error);
+        alert('Ошибка соединения');
     }
 }
 
-// ============ ПОИСК ПОЛЬЗОВАТЕЛЕЙ ============
-searchInput.addEventListener('input', async () => {
-    const query = searchInput.value.trim();
-    
+// Поиск пользователей
+searchInput.addEventListener('input', async function() {
+    const query = this.value.trim();
     if (query.length < 1) {
         searchResults.style.display = 'none';
         return;
     }
     
     try {
-        const resp = await fetch(`/api/users?search=${encodeURIComponent(query)}`);
-        if (!resp.ok) {
-            console.error('Ошибка поиска:', resp.status);
-            return;
-        }
+        const resp = await fetch(`/api/users?user_id=${userId}&search=${encodeURIComponent(query)}`);
         const users = await resp.json();
         console.log('Результаты поиска:', users);
         
@@ -134,7 +141,7 @@ searchInput.addEventListener('input', async () => {
         } else {
             searchResults.innerHTML = users.map(u => `
                 <div class="result-item" onclick="startPrivateChat(${u.id}, '${u.username}')">
-                    ${u.display_name || u.username} (@${u.username})
+                    ${u.display_name || u.username}
                 </div>
             `).join('');
         }
@@ -144,34 +151,30 @@ searchInput.addEventListener('input', async () => {
     }
 });
 
-// ============ ЗАКРЫТЬ ПОИСК ============
-document.addEventListener('click', (e) => {
+document.addEventListener('click', function(e) {
     if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
         searchResults.style.display = 'none';
     }
 });
 
-// ============ НАЧАТЬ ЛИЧНЫЙ ЧАТ ============
-async function startPrivateChat(userId, username) {
-    const chatId = `user_${userId}`;
-    openChat('private', chatId, username);
+// Начать личный чат
+async function startPrivateChat(otherUserId, username) {
+    const chatId = 'user_' + otherUserId;
+    openChat('private', chatId, username, otherUserId);
     searchResults.style.display = 'none';
     searchInput.value = '';
     await loadChats();
 }
 
-// ============ СОЗДАНИЕ ГРУППЫ ============
+// Создание группы
 async function showCreateGroup() {
     document.getElementById('group-modal').style.display = 'flex';
     
     try {
-        const resp = await fetch('/api/users?search=');
+        const resp = await fetch(`/api/users?user_id=${userId}&search=`);
         const users = await resp.json();
         document.getElementById('group-members-list').innerHTML = users.map(u => `
-            <div>
-                <input type="checkbox" value="${u.id}">
-                <label>${u.display_name || u.username}</label>
-            </div>
+            <div><input type="checkbox" value="${u.id}"> ${u.display_name || u.username}</div>
         `).join('');
     } catch (error) {
         console.error('Ошибка загрузки пользователей:', error);
@@ -185,20 +188,20 @@ async function createGroup() {
         return;
     }
     
-    const checkboxes = document.querySelectorAll('#group-members-list input[type="checkbox"]:checked');
+    const checkboxes = document.querySelectorAll('#group-members-list input:checked');
     const members = Array.from(checkboxes).map(cb => parseInt(cb.value));
     
     try {
-        const resp = await fetch('/api/create_group', {
+        const resp = await fetch(`/api/create_group?user_id=${userId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, members })
         });
         const data = await resp.json();
-        
+        console.log('Группа создана:', data);
         closeModal();
         await loadChats();
-        openChat('group', `group_${data.group_id}`, data.group_name);
+        openChat('group', 'group_' + data.group_id, data.group_name);
     } catch (error) {
         console.error('Ошибка создания группы:', error);
     }
@@ -209,7 +212,7 @@ function closeModal() {
     document.getElementById('group-name').value = '';
 }
 
-// ============ ВЫХОД ============
+// Выход
 async function logout() {
     if (confirm('Выйти?')) {
         await fetch('/api/logout', { method: 'POST' });
@@ -217,18 +220,18 @@ async function logout() {
     }
 }
 
-// ============ ОБРАБОТЧИКИ ============
+// Обработчики
 sendBtn.addEventListener('click', sendMessage);
-msgInput.addEventListener('keydown', (e) => {
+msgInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') sendMessage();
 });
 
-// ============ ЗАПУСК ============
-console.log('Приложение запущено, userId:', userId);
-loadChats();
-
-setInterval(() => {
+// Автообновление каждые 3 секунды
+setInterval(function() {
     if (currentChatId) {
         loadMessages(currentChatId);
     }
 }, 3000);
+
+// Запуск
+loadChats();
