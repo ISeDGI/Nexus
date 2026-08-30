@@ -152,7 +152,7 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ (БЕЗ БЛИКОВ) ============
+// ============ ЗАГРУЗКА СООБЩЕНИЙ (С ОБНОВЛЕНИЕМ АВАТАРОК) ============
 let lastMessageCount = 0;
 let lastMessageChatId = null;
 let lastMessagesHtml = '';
@@ -197,6 +197,20 @@ async function loadMessages(chatId) {
             return;
         }
         
+        // === ПОЛУЧАЕМ СВЕЖИЕ АВАТАРКИ ДЛЯ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ ===
+        const avatarCache = {};
+        for (const msg of messages) {
+            if (msg.sender_id != userId && !avatarCache[msg.sender_id]) {
+                try {
+                    const profileResp = await fetch(`/api/profile/${msg.sender_id}?user_id=${userId}&t=${Date.now()}`);
+                    const profile = await profileResp.json();
+                    avatarCache[msg.sender_id] = profile.avatar;
+                } catch (e) {
+                    avatarCache[msg.sender_id] = null;
+                }
+            }
+        }
+        
         let html = '';
         messages.forEach(msg => {
             const isOwn = msg.sender_id == userId;
@@ -216,8 +230,12 @@ async function loadMessages(chatId) {
                 }
             }
             
-            // АВАТАРКА В СООБЩЕНИЯХ (только для чужих)
-            const avatarHtml = !isOwn ? `<div class="chat-avatar" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${getAvatarHtml(msg.avatar, msg.display_name || msg.username)}</div>` : '';
+            // === АВАТАРКА В СООБЩЕНИЯХ (берётся из свежего кэша) ===
+            let avatar = null;
+            if (!isOwn) {
+                avatar = avatarCache[msg.sender_id] || msg.avatar;
+            }
+            const avatarHtml = !isOwn ? `<div class="chat-avatar" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${getAvatarHtml(avatar, msg.display_name || msg.username)}</div>` : '';
             
             html += `<div class="message ${isOwn ? 'own' : 'other'}">
                 <div style="display:flex;align-items:flex-start;gap:10px;">
@@ -562,14 +580,14 @@ msgInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') sendMessage();
 });
 
-// ============ АВТООБНОВЛЕНИЕ (БЕЗ БЛИКОВ) ============
+// ============ АВТООБНОВЛЕНИЕ ============
 setInterval(function() {
     if (currentChatId) {
         loadMessages(currentChatId);
     }
 }, 3000);
 
-// ============ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ АВАТАРОК (ТОЛЬКО ПРИ СМЕНЕ) ============
+// ============ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ АВАТАРОК ============
 async function forceUpdateAvatars() {
     try {
         const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
