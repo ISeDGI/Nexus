@@ -1,9 +1,7 @@
 let currentChatId = null;
 let currentChatType = null;
 let currentChatName = '';
-let username = '';
 
-// DOM элементы
 const messagesDiv = document.getElementById('messages');
 const msgInput = document.getElementById('msg-input');
 const sendBtn = document.getElementById('send-btn');
@@ -12,22 +10,27 @@ const groupChatsDiv = document.getElementById('group-chats');
 const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
 const currentChatNameSpan = document.getElementById('current-chat-name');
-const usernameDisplay = document.getElementById('username-display');
 
-// Загрузка чатов
+// Получить ID пользователя из HTML
+const userId = window.userId || 0;
+
+// ============ ЗАГРУЗКА ЧАТОВ ============
 async function loadChats() {
     try {
         const resp = await fetch('/api/chats');
+        if (!resp.ok) {
+            console.error('Ошибка загрузки чатов:', resp.status);
+            return;
+        }
         const data = await resp.json();
+        console.log('Чаты загружены:', data);
         
-        // Личные чаты
         privateChatsDiv.innerHTML = data.private.map(p => `
-            <div class="chat-item" onclick="openChat('private', 'user_${p.user_id}', '${p.display_name || p.username}')">
+            <div class="chat-item" onclick="openChat('private', 'user_${p.id}', '${p.display_name || p.username}')">
                 ${p.display_name || p.username}
             </div>
         `).join('');
         
-        // Группы
         groupChatsDiv.innerHTML = data.groups.map(g => `
             <div class="chat-item" onclick="openChat('group', 'group_${g.id}', '${g.name}')">
                 ${g.name} (${g.creator})
@@ -38,28 +41,31 @@ async function loadChats() {
     }
 }
 
-// Открыть чат
+// ============ ОТКРЫТЬ ЧАТ ============
 function openChat(type, chatId, name) {
+    console.log('Открываем чат:', chatId, name);
     currentChatId = chatId;
     currentChatType = type;
     currentChatName = name;
     currentChatNameSpan.textContent = name;
     
-    // Подсветка активного чата
-    document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
-    event.target.classList.add('active');
-    
     loadMessages(chatId);
 }
 
-// Загрузить сообщения
+// ============ ЗАГРУЗКА СООБЩЕНИЙ ============
 async function loadMessages(chatId) {
     try {
         const resp = await fetch(`/api/messages/${chatId}`);
+        if (!resp.ok) {
+            console.error('Ошибка загрузки сообщений:', resp.status);
+            messagesDiv.innerHTML = `<div style="color:red;">Ошибка загрузки сообщений (${resp.status})</div>`;
+            return;
+        }
         const messages = await resp.json();
+        console.log('Сообщения:', messages);
         
         messagesDiv.innerHTML = messages.map(msg => {
-            const isOwn = msg.sender_id == window.userId;
+            const isOwn = msg.sender_id == userId;
             return `<div class="message ${isOwn ? 'own' : ''}">
                 <span class="msg-username">${msg.display_name || msg.username}</span>
                 <span class="msg-text">${msg.text}</span>
@@ -70,10 +76,11 @@ async function loadMessages(chatId) {
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     } catch (error) {
         console.error('Ошибка загрузки сообщений:', error);
+        messagesDiv.innerHTML = `<div style="color:red;">Ошибка: ${error.message}</div>`;
     }
 }
 
-// Отправить сообщение
+// ============ ОТПРАВКА СООБЩЕНИЯ ============
 async function sendMessage() {
     if (!currentChatId) {
         alert('Выберите чат');
@@ -84,7 +91,7 @@ async function sendMessage() {
     if (!text) return;
     
     try {
-        await fetch('/api/send', {
+        const resp = await fetch('/api/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -93,6 +100,10 @@ async function sendMessage() {
                 text: text
             })
         });
+        if (!resp.ok) {
+            console.error('Ошибка отправки:', resp.status);
+            return;
+        }
         msgInput.value = '';
         loadMessages(currentChatId);
     } catch (error) {
@@ -100,17 +111,23 @@ async function sendMessage() {
     }
 }
 
-// Поиск пользователей
+// ============ ПОИСК ПОЛЬЗОВАТЕЛЕЙ ============
 searchInput.addEventListener('input', async () => {
     const query = searchInput.value.trim();
-    if (query.length < 2) {
+    
+    if (query.length < 1) {
         searchResults.style.display = 'none';
         return;
     }
     
     try {
-        const resp = await fetch(`/api/users?search=${query}`);
+        const resp = await fetch(`/api/users?search=${encodeURIComponent(query)}`);
+        if (!resp.ok) {
+            console.error('Ошибка поиска:', resp.status);
+            return;
+        }
         const users = await resp.json();
+        console.log('Результаты поиска:', users);
         
         if (users.length === 0) {
             searchResults.innerHTML = '<div class="result-item">Ничего не найдено</div>';
@@ -127,14 +144,14 @@ searchInput.addEventListener('input', async () => {
     }
 });
 
-// Закрыть поиск при клике вне
+// ============ ЗАКРЫТЬ ПОИСК ============
 document.addEventListener('click', (e) => {
     if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
         searchResults.style.display = 'none';
     }
 });
 
-// Начать личный чат
+// ============ НАЧАТЬ ЛИЧНЫЙ ЧАТ ============
 async function startPrivateChat(userId, username) {
     const chatId = `user_${userId}`;
     openChat('private', chatId, username);
@@ -143,11 +160,10 @@ async function startPrivateChat(userId, username) {
     await loadChats();
 }
 
-// Создание группы
+// ============ СОЗДАНИЕ ГРУППЫ ============
 async function showCreateGroup() {
     document.getElementById('group-modal').style.display = 'flex';
     
-    // Загрузить список пользователей для добавления
     try {
         const resp = await fetch('/api/users?search=');
         const users = await resp.json();
@@ -193,7 +209,7 @@ function closeModal() {
     document.getElementById('group-name').value = '';
 }
 
-// Выход
+// ============ ВЫХОД ============
 async function logout() {
     if (confirm('Выйти?')) {
         await fetch('/api/logout', { method: 'POST' });
@@ -201,19 +217,16 @@ async function logout() {
     }
 }
 
-// Обработчики
+// ============ ОБРАБОТЧИКИ ============
 sendBtn.addEventListener('click', sendMessage);
 msgInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sendMessage();
 });
 
-// Получить ID текущего пользователя
-window.userId = {{ user_id }};
-
-// Загрузить чаты при старте
+// ============ ЗАПУСК ============
+console.log('Приложение запущено, userId:', userId);
 loadChats();
 
-// Обновлять сообщения каждые 3 секунды
 setInterval(() => {
     if (currentChatId) {
         loadMessages(currentChatId);
