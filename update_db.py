@@ -1,33 +1,36 @@
 import sqlite3
+import os
 
+os.makedirs('database', exist_ok=True)
 conn = sqlite3.connect('database/data_source.db')
 cursor = conn.cursor()
 
-# Таблица пользователей
+# Создаём таблицы с полем file_path
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     display_name TEXT,
+    bio TEXT,
+    avatar TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )
 ''')
 
-# Таблица сообщений
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sender_id INTEGER NOT NULL,
     chat_id TEXT NOT NULL,
     chat_type TEXT NOT NULL,
-    text TEXT NOT NULL,
+    text TEXT,
+    file_path TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (sender_id) REFERENCES users (id)
 )
 ''')
 
-# Таблица групповых чатов
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +41,6 @@ CREATE TABLE IF NOT EXISTS groups (
 )
 ''')
 
-# Таблица участников групп
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS group_members (
     group_id INTEGER NOT NULL,
@@ -52,4 +54,4 @@ CREATE TABLE IF NOT EXISTS group_members (
 
 conn.commit()
 conn.close()
-print("✅ База данных обновлена!")
+print("✅ База данных создана с file_path!")
