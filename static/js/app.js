@@ -124,8 +124,12 @@ async function updateChatHeaderAvatar(userIdToShow) {
 let unreadCounts = {};
 
 function updateUnreadBadge(chatId, count) {
+    console.log('🔴 updateUnreadBadge:', chatId, '=', count);
     const chatItem = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
-    if (!chatItem) return;
+    if (!chatItem) {
+        console.log('⚠️ Элемент не найден для', chatId);
+        return;
+    }
     
     const oldBadge = chatItem.querySelector('.unread-badge');
     if (oldBadge) oldBadge.remove();
@@ -138,6 +142,7 @@ function updateUnreadBadge(chatId, count) {
         if (infoDiv) {
             infoDiv.appendChild(badge);
         }
+        console.log('✅ Бейдж добавлен для', chatId);
     }
     
     const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
@@ -147,6 +152,7 @@ function updateUnreadBadge(chatId, count) {
 // ============ ПОДСЧЁТ НЕПРОЧИТАННЫХ ПРИ ЗАГРУЗКЕ ============
 async function calculateUnreadCounts() {
     try {
+        console.log('📊 Рассчитываем непрочитанные...');
         const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
         const data = await resp.json();
         
@@ -160,12 +166,14 @@ async function calculateUnreadCounts() {
                 const unread = messages.filter(msg => msg.sender_id != userId);
                 if (unread.length > 0) {
                     unreadCounts[chatId] = unread.length;
+                    console.log('📊 Начальный счётчик для', chatId, ':', unread.length);
                 }
             }
         }
         
         // Обновляем отображение
         await loadChats();
+        console.log('📊 Счётчики загружены:', unreadCounts);
     } catch (error) {
         console.error('Ошибка подсчёта непрочитанных:', error);
     }
@@ -250,6 +258,7 @@ async function loadMessages(chatId) {
         }
         
         const messages = await resp.json();
+        console.log('📨 Загружено сообщений для', chatId, ':', messages.length);
         
         // === СЧЁТЧИК НЕПРОЧИТАННЫХ ===
         const currentIds = messages.map(m => m.id);
@@ -264,19 +273,19 @@ async function loadMessages(chatId) {
             
             if (unread.length > 0) {
                 hasNewUnread = true;
+                // Если чат не открыт — увеличиваем счётчик
                 if (currentChatId !== chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                 }
+                // ЗВУК + УВЕДОМЛЕНИЕ (если сообщение от другого пользователя)
                 const lastMsg = unread[unread.length - 1];
-                // ЗВУК ТОЛЬКО ДЛЯ ЧУЖИХ СООБЩЕНИЙ И ЕСЛИ МЫ НЕ В ЭТОМ ЧАТЕ
-                if (currentChatId !== chatId) {
-                    playNotificationSound();
-                    showBrowserNotification(
-                        lastMsg.display_name || lastMsg.username,
-                        lastMsg.text || '📎 Файл'
-                    );
-                }
+                console.log('🔔 Новое сообщение от:', lastMsg.display_name || lastMsg.username);
+                playNotificationSound();
+                showBrowserNotification(
+                    lastMsg.display_name || lastMsg.username,
+                    lastMsg.text || '📎 Файл'
+                );
             }
         }
         
@@ -348,7 +357,6 @@ async function loadMessages(chatId) {
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
         isFirstLoad = false;
         
-        // Если были новые непрочитанные — обновляем список чатов
         if (hasNewUnread) {
             setTimeout(() => loadChats(), 500);
         }
@@ -357,7 +365,7 @@ async function loadMessages(chatId) {
     }
 }
 
-// ============ ОТПРАВКА (БЕЗ ЗВУКА) ============
+// ============ ОТПРАВКА ============
 async function sendMessage() {
     if (!currentChatId) {
         alert('Выберите чат');
@@ -712,25 +720,15 @@ msgInput.addEventListener('keydown', function(e) {
 });
 
 // ============ АВТООБНОВЛЕНИЕ ============
-let updateInterval = null;
-let chatUpdateInterval = null;
+setInterval(function() {
+    if (currentChatId) {
+        loadMessages(currentChatId);
+    }
+}, 3000);
 
-function startAutoUpdate() {
-    if (updateInterval) clearInterval(updateInterval);
-    if (chatUpdateInterval) clearInterval(chatUpdateInterval);
-    
-    updateInterval = setInterval(function() {
-        if (currentChatId) {
-            loadMessages(currentChatId);
-        }
-    }, 3000);
-    
-    chatUpdateInterval = setInterval(function() {
-        loadChats();
-    }, 7000);
-}
-
-startAutoUpdate();
+setInterval(function() {
+    loadChats();
+}, 7000);
 
 document.addEventListener('visibilitychange', function() {
     if (!document.hidden) {
@@ -738,7 +736,6 @@ document.addEventListener('visibilitychange', function() {
             loadMessages(currentChatId);
         }
         loadChats();
-        startAutoUpdate();
     }
 });
 
