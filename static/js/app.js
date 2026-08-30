@@ -64,27 +64,20 @@ function getAvatarHtml(avatar, name) {
     return (name || '?')[0].toUpperCase();
 }
 
-// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ (СВОЯ) ============
+// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ============
 async function updateHeaderAvatar() {
     try {
-        console.log('🔄 Обновляем аватарку в шапке...');
         const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
         const user = await resp.json();
-        console.log('📸 Данные пользователя:', user);
-        
         if (headerAvatar) {
             headerAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
-            console.log('✅ Аватарка в шапке обновлена');
-        } else {
-            console.log('❌ Элемент header-avatar не найден');
         }
-        
         const usernameDisplay = document.getElementById('username-display');
         if (usernameDisplay) {
             usernameDisplay.textContent = user.display_name || user.username;
         }
     } catch (e) {
-        console.error('❌ Ошибка обновления аватарки в шапке:', e);
+        console.error('Ошибка обновления аватарки в шапке:', e);
     }
 }
 
@@ -94,7 +87,6 @@ async function updateChatHeaderAvatar(userIdToShow) {
         if (chatHeaderAvatar) {
             chatHeaderAvatar.textContent = '👤';
             chatHeaderAvatar.style.background = '#007AFF';
-            chatHeaderAvatar.style.color = 'white';
             chatHeaderAvatar.innerHTML = '👤';
         }
         return;
@@ -112,7 +104,6 @@ async function updateChatHeaderAvatar(userIdToShow) {
         const user = await resp.json();
         if (chatHeaderAvatar) {
             chatHeaderAvatar.style.background = '#007AFF';
-            chatHeaderAvatar.style.color = 'white';
             chatHeaderAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
         }
         if (currentChatNameSpan) {
@@ -141,6 +132,7 @@ function updateUnreadBadge(chatId, count) {
             badge.style.display = 'none';
         }
     }
+    // Обновляем заголовок страницы
     const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
     document.title = totalUnread > 0 ? `(${totalUnread}) Nexus` : 'Nexus';
 }
@@ -166,18 +158,21 @@ async function loadChats() {
         }).join('');
         
         groupChatsDiv.innerHTML = data.groups.map(g => {
+            const chatId = `group_${g.id}`;
+            const unread = unreadCounts[chatId] || 0;
             const firstLetter = (g.name || 'Г')[0].toUpperCase();
             return `
-                <div class="chat-item" onclick="openChat('group', 'group_${g.id}', '${g.name}')">
+                <div class="chat-item" data-chat-id="${chatId}" onclick="openChat('group', '${chatId}', '${g.name}')">
                     <div class="chat-avatar" style="background:#1a237e;color:white;">${firstLetter}</div>
-                    <span class="chat-name">${g.name}</span>
+                    <div style="flex:1;display:flex;justify-content:space-between;align-items:center;">
+                        <span class="chat-name">${g.name}</span>
+                        ${unread > 0 ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
+                    </div>
                 </div>
             `;
         }).join('');
         
-        // ===== ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ АВАТАРКУ В ШАПКЕ =====
         await updateHeaderAvatar();
-        
     } catch (error) {
         console.error('Ошибка загрузки чатов:', error);
     }
@@ -193,6 +188,7 @@ function openChat(type, chatId, name, otherUserId = null) {
     
     updateChatHeaderAvatar(otherUserId);
     
+    // Сбрасываем счётчик непрочитанных при открытии чата
     if (unreadCounts[chatId]) {
         unreadCounts[chatId] = 0;
         updateUnreadBadge(chatId, 0);
@@ -221,14 +217,17 @@ async function loadMessages(chatId) {
         }
         const messages = await resp.json();
         
+        // ===== СЧЁТЧИК НЕПРОЧИТАННЫХ =====
         if (lastMessageChatId === chatId && messages.length > lastMessageCount) {
             const newMessages = messages.slice(lastMessageCount);
             const unread = newMessages.filter(msg => msg.sender_id != userId);
             if (unread.length > 0) {
+                // Если чат не открыт — увеличиваем счётчик
                 if (currentChatId !== chatId) {
                     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
                     updateUnreadBadge(chatId, unreadCounts[chatId]);
                 }
+                // Уведомление
                 const lastMsg = unread[unread.length - 1];
                 if (lastMsg.sender_id != userId) {
                     playNotificationSound();
