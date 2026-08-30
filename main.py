@@ -536,14 +536,11 @@ def get_chats():
             WHERE m.chat_type = 'private' AND (m.sender_id = ? OR m.sender_id IN 
                 (SELECT sender_id FROM messages WHERE chat_type = 'private')
             )
-            ORDER BY m.timestamp DESC
         ''', (user_id, user_id, user_id, user_id)).fetchall()
         
         private_result = []
-        seen = set()
         for row in private_chats:
-            if row['user_id'] and row['user_id'] not in seen:
-                seen.add(row['user_id'])
+            if row['user_id']:
                 user = db.execute(
                     'SELECT id, username, display_name, avatar FROM users WHERE id = ?',
                     (row['user_id'],)
@@ -569,4 +566,4 @@ def get_chats():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(debug=True, host='0.0.0.0', port=5000)

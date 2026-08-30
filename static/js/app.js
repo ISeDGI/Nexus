@@ -13,6 +13,7 @@ const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
 const currentChatNameSpan = document.getElementById('current-chat-name');
 const chatHeaderAvatar = document.getElementById('chat-avatar');
+const headerAvatar = document.getElementById('header-avatar');
 const fileInput = document.getElementById('file-input');
 const attachBtn = document.getElementById('attach-btn');
 const recordBtn = document.getElementById('record-btn');
@@ -63,12 +64,11 @@ function getAvatarHtml(avatar, name) {
     return (name || '?')[0].toUpperCase();
 }
 
-// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ============
+// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ (СВОЯ) ============
 async function updateHeaderAvatar() {
     try {
-        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}`);
+        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
         const user = await resp.json();
-        const headerAvatar = document.getElementById('header-avatar');
         if (headerAvatar) {
             headerAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
         }
@@ -83,17 +83,29 @@ async function updateHeaderAvatar() {
 
 // ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ЧАТА ============
 async function updateChatHeaderAvatar(userIdToShow) {
-    if (!userIdToShow) return;
+    if (!userIdToShow) {
+        if (chatHeaderAvatar) {
+            chatHeaderAvatar.textContent = '👤';
+            chatHeaderAvatar.style.background = '#007AFF';
+            chatHeaderAvatar.style.color = 'white';
+            chatHeaderAvatar.innerHTML = '👤';
+        }
+        return;
+    }
     try {
-        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}`);
+        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}&t=${Date.now()}`);
         if (!resp.ok) {
             if (chatHeaderAvatar) {
                 chatHeaderAvatar.textContent = '👤';
+                chatHeaderAvatar.style.background = '#007AFF';
+                chatHeaderAvatar.innerHTML = '👤';
             }
             return;
         }
         const user = await resp.json();
         if (chatHeaderAvatar) {
+            chatHeaderAvatar.style.background = '#007AFF';
+            chatHeaderAvatar.style.color = 'white';
             chatHeaderAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
         }
         if (currentChatNameSpan) {
@@ -103,6 +115,8 @@ async function updateChatHeaderAvatar(userIdToShow) {
         console.error('Ошибка обновления аватарки в шапке чата:', e);
         if (chatHeaderAvatar) {
             chatHeaderAvatar.textContent = '👤';
+            chatHeaderAvatar.style.background = '#007AFF';
+            chatHeaderAvatar.innerHTML = '👤';
         }
     }
 }
@@ -127,7 +141,7 @@ function updateUnreadBadge(chatId, count) {
 // ============ ЗАГРУЗКА ЧАТОВ ============
 async function loadChats() {
     try {
-        const resp = await fetch(`/api/chats?user_id=${userId}`);
+        const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
         const data = await resp.json();
         
         privateChatsDiv.innerHTML = data.private.map(p => {
@@ -144,12 +158,15 @@ async function loadChats() {
             `;
         }).join('');
         
-        groupChatsDiv.innerHTML = data.groups.map(g => `
-            <div class="chat-item" onclick="openChat('group', 'group_${g.id}', '${g.name}')">
-                <div class="chat-avatar">👥</div>
-                <span class="chat-name">${g.name}</span>
-            </div>
-        `).join('');
+        groupChatsDiv.innerHTML = data.groups.map(g => {
+            const firstLetter = (g.name || 'Г')[0].toUpperCase();
+            return `
+                <div class="chat-item" onclick="openChat('group', 'group_${g.id}', '${g.name}')">
+                    <div class="chat-avatar" style="background:#1a237e;color:white;">${firstLetter}</div>
+                    <span class="chat-name">${g.name}</span>
+                </div>
+            `;
+        }).join('');
         
         updateHeaderAvatar();
     } catch (error) {
@@ -188,7 +205,7 @@ let lastMessagesHtml = '';
 
 async function loadMessages(chatId) {
     try {
-        const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}`);
+        const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
         if (!resp.ok) {
             messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">Ошибка загрузки</div>';
             return;
@@ -229,7 +246,7 @@ async function loadMessages(chatId) {
         for (const msg of messages) {
             if (msg.sender_id != userId && !avatarCache[msg.sender_id]) {
                 try {
-                    const profileResp = await fetch(`/api/profile/${msg.sender_id}?user_id=${userId}`);
+                    const profileResp = await fetch(`/api/profile/${msg.sender_id}?user_id=${userId}&t=${Date.now()}`);
                     if (profileResp.ok) {
                         const profile = await profileResp.json();
                         avatarCache[msg.sender_id] = profile.avatar;
@@ -525,7 +542,7 @@ async function showProfile() {
     modal.style.display = 'flex';
     
     try {
-        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}`);
+        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
         const user = await resp.json();
         
         content.innerHTML = `
@@ -563,7 +580,7 @@ async function showUserProfile(userIdToShow) {
     modal.style.display = 'flex';
     
     try {
-        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}`);
+        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}&t=${Date.now()}`);
         if (!resp.ok) {
             content.innerHTML = '<div style="color:red;">Пользователь не найден</div>';
             return;
