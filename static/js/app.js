@@ -54,10 +54,10 @@ if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
 }
 
-// ============ АВАТАРЫ (ЕДИНЫЙ ИСТОЧНИК) ============
+// ============ АВАТАРЫ ============
 function getAvatarHtml(avatar, name) {
     if (avatar) {
-        return `<img src="${avatar}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
+        return `<img src="${avatar}?t=${Date.now()}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
     }
     return (name || '?')[0].toUpperCase();
 }
@@ -230,7 +230,7 @@ async function loadMessages(chatId) {
                 }
             }
             
-            // === АВАТАРКА В СООБЩЕНИЯХ (берётся из свежего кэша) ===
+            // === АВАТАРКА В СООБЩЕНИЯХ ===
             let avatar = null;
             if (!isOwn) {
                 avatar = avatarCache[msg.sender_id] || msg.avatar;
@@ -483,7 +483,7 @@ function closeModal() {
     document.getElementById('group-name').value = '';
 }
 
-// ============ ПРОФИЛЬ ============
+// ============ ПРОФИЛЬ (МОЙ) ============
 async function showProfile() {
     const modal = document.getElementById('profile-modal');
     const content = document.getElementById('profile-content');
@@ -512,6 +512,37 @@ async function showProfile() {
                 <textarea id="profile-bio" style="width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:10px;resize:vertical;min-height:60px;">${user.bio || ''}</textarea>
             </div>
             <button onclick="saveProfile()" style="width:100%;padding:10px;background:#007AFF;color:white;border:none;border-radius:10px;cursor:pointer;margin-top:10px;">Сохранить</button>
+        `;
+    } catch (error) {
+        content.innerHTML = '<div style="color:red;">Ошибка загрузки профиля</div>';
+    }
+}
+
+// ============ ПРОФИЛЬ ЛЮБОГО ПОЛЬЗОВАТЕЛЯ ============
+async function showUserProfile(userIdToShow) {
+    if (!userIdToShow) {
+        alert('Выберите чат');
+        return;
+    }
+    const modal = document.getElementById('profile-modal');
+    const content = document.getElementById('profile-content');
+    const title = document.getElementById('profile-title');
+    title.textContent = 'Профиль пользователя';
+    modal.style.display = 'flex';
+    
+    try {
+        const resp = await fetch(`/api/profile/${userIdToShow}?user_id=${userId}&t=${Date.now()}`);
+        const user = await resp.json();
+        
+        content.innerHTML = `
+            <div style="text-align:center;margin-bottom:20px;">
+                <div class="avatar-preview" style="width:80px;height:80px;border-radius:50%;margin:0 auto 15px;display:flex;align-items:center;justify-content:center;background:#007AFF;color:white;font-size:32px;overflow:hidden;">
+                    ${getAvatarHtml(user.avatar, user.display_name || user.username)}
+                </div>
+                <h3>${user.display_name || user.username}</h3>
+                <div style="color:#868e96;font-size:14px;">@${user.username}</div>
+                <div style="margin-top:10px;color:#495057;">${user.bio || 'Пока ничего о себе не рассказал'}</div>
+            </div>
         `;
     } catch (error) {
         content.innerHTML = '<div style="color:red;">Ошибка загрузки профиля</div>';
@@ -586,19 +617,6 @@ setInterval(function() {
         loadMessages(currentChatId);
     }
 }, 3000);
-
-// ============ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ АВАТАРОК ============
-async function forceUpdateAvatars() {
-    try {
-        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
-        const user = await resp.json();
-        const headerAvatar = document.getElementById('header-avatar');
-        if (headerAvatar) {
-            headerAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
-        }
-        await loadChats();
-    } catch (e) {}
-}
 
 // ============ ЗАПУСК ============
 console.log('🚀 Запуск Nexus, userId:', userId);
