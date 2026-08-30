@@ -2,12 +2,14 @@ from flask import Flask, render_template, request, jsonify, session
 import sqlite3
 import hashlib
 import secrets
+import os
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
 
 def get_db():
-    conn = sqlite3.connect('database/data_source.db')
+    db_path = os.path.join(os.path.dirname(__file__), 'database', 'data_source.db')
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -146,28 +148,25 @@ def get_chats():
         private_chats = db.execute('''
             SELECT DISTINCT 
                 CASE 
-                    WHEN sender_id = ? THEN (
-                        SELECT id FROM users WHERE id != ? AND id IN (
-                            SELECT sender_id FROM messages WHERE chat_type = 'private' AND sender_id != ?
-                        )
-                    )
-                    ELSE sender_id
-                END as user_id
-            FROM messages 
-            WHERE chat_type = 'private' AND (sender_id = ? OR sender_id IN (
+                    WHEN m.sender_id = ? THEN u2.id
+                    ELSE u1.id
+                END as user_id,
+                u.username,
+                u.display_name
+            FROM messages m
+            JOIN users u1 ON m.sender_id = u1.id
+            JOIN users u2 ON m.sender_id = u2.id
+            JOIN users u ON u.id = (
+                CASE 
+                    WHEN m.sender_id = ? THEN u2.id
+                    ELSE u1.id
+                END
+            )
+            WHERE m.chat_type = 'private' 
+            AND (m.sender_id = ? OR m.sender_id IN (
                 SELECT sender_id FROM messages WHERE chat_type = 'private'
             ))
-        ''', (user_id, user_id, user_id, user_id)).fetchall()
-        
-        private_result = []
-        for row in private_chats:
-            if row['user_id']:
-                user = db.execute(
-                    'SELECT id, username, display_name FROM users WHERE id = ?',
-                    (row['user_id'],)
-                ).fetchone()
-                if user:
-                    private_result.append(user)
+        ''', (user_id, user_id, user_id)).fetchall()
         
         groups = db.execute('''
             SELECT g.id, g.name, g.created_by, u.username as creator
@@ -179,7 +178,7 @@ def get_chats():
         
         db.close()
         return jsonify({
-            'private': [dict(p) for p in private_result],
+            'private': [dict(p) for p in private_chats],
             'groups': [dict(g) for g in groups]
         })
     except Exception as e:
@@ -218,6 +217,5 @@ def create_group():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=True, host='0.0.0.0', port=port)

@@ -16,8 +16,8 @@
         .form.active { display: block; }
         input { width: 100%; padding: 12px 15px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; outline: none; }
         input:focus { border-color: #007AFF; }
-        button[type="submit"] { width: 100%; padding: 12px; background: #007AFF; color: white; border: none; border-radius: 10px; font-size: 16px; cursor: pointer; }
-        button[type="submit"]:hover { background: #0055b3; }
+        button { width: 100%; padding: 12px; background: #007AFF; color: white; border: none; border-radius: 10px; font-size: 16px; cursor: pointer; }
+        button:hover { background: #0055b3; }
         .error { color: red; text-align: center; margin-bottom: 10px; font-size: 14px; }
     </style>
 </head>
@@ -32,14 +32,14 @@
             <div id="login-error" class="error"></div>
             <input type="text" id="login-username" placeholder="Никнейм">
             <input type="password" id="login-password" placeholder="Пароль">
-            <button type="submit" onclick="login()">Войти</button>
+            <button onclick="login()">Войти</button>
         </div>
         <div id="register-form" class="form">
             <div id="register-error" class="error"></div>
             <input type="text" id="register-username" placeholder="Никнейм">
             <input type="text" id="register-displayname" placeholder="Имя (опционально)">
             <input type="password" id="register-password" placeholder="Пароль">
-            <button type="submit" onclick="register()">Зарегистрироваться</button>
+            <button onclick="register()">Зарегистрироваться</button>
         </div>
     </div>
     <script>
