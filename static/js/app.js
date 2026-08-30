@@ -133,16 +133,21 @@ function updateUnreadBadge(chatId, count) {
 async function calculateUnreadCounts() {
     try {
         console.log('📊 Рассчитываем непрочитанные...');
+        console.log('📊 userId:', userId);
+        
         const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
         const data = await resp.json();
+        console.log('📊 Данные чатов:', data);
         
         if (!data.private || data.private.length === 0) {
-            console.log('📊 Нет личных чатов');
+            console.log('📊 Нет личных чатов, пропускаем');
             return;
         }
         
+        // Очищаем старые счётчики
         unreadCounts = {};
         
+        // Считаем непрочитанные для каждого чата
         for (const chat of data.private) {
             const chatId = `user_${chat.id}`;
             const messagesResp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
@@ -157,16 +162,14 @@ async function calculateUnreadCounts() {
         }
         console.log('📊 Итоговые счётчики:', unreadCounts);
         
-        // Применяем бейджи
-        for (const [chatId, count] of Object.entries(unreadCounts)) {
-            updateUnreadBadge(chatId, count);
-        }
+        // Принудительно перерисовываем чаты с бейджами
+        await loadChats(true);
     } catch (error) {
         console.error('Ошибка подсчёта непрочитанных:', error);
     }
 }
 
-// ============ ЗАГРУЗКА ЧАТОВ (С СОХРАНЕНИЕМ БЕЙДЖЕЙ) ============
+// ============ ЗАГРУЗКА ЧАТОВ ============
 async function loadChats(force = false) {
     try {
         const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
@@ -374,8 +377,8 @@ async function sendMessage() {
             msgInput.value = '';
             chatMessageIds[currentChatId] = [];
             await loadMessages(currentChatId);
-            // Принудительно обновляем чаты, но без перерисовки, если не изменились
-            setTimeout(() => loadChats(false), 300);
+            // Принудительно обновляем чаты
+            setTimeout(() => loadChats(true), 300);
         } else {
             alert('Ошибка отправки: ' + data.error);
         }
@@ -411,7 +414,7 @@ fileInput.addEventListener('change', async function() {
             if (resp.ok) {
                 chatMessageIds[currentChatId] = [];
                 await loadMessages(currentChatId);
-                setTimeout(() => loadChats(false), 300);
+                setTimeout(() => loadChats(true), 300);
             } else {
                 const data = await resp.json();
                 alert('Ошибка загрузки: ' + data.error);
@@ -463,7 +466,7 @@ async function startRecording() {
                 if (resp.ok) {
                     chatMessageIds[currentChatId] = [];
                     await loadMessages(currentChatId);
-                    setTimeout(() => loadChats(false), 300);
+                    setTimeout(() => loadChats(true), 300);
                 }
             } catch (error) {
                 console.error('Ошибка отправки голосового:', error);
@@ -739,8 +742,7 @@ window.addEventListener('focus', function() {
 console.log('🚀 Запуск Nexus, userId:', userId);
 
 // ============ ПЕРВИЧНЫЙ ЗАПУСК ============
-loadChats(true).then(() => {
-    setTimeout(async () => {
-        await calculateUnreadCounts();
-    }, 1000);
+// Сначала загружаем чаты, потом считаем непрочитанные
+loadChats(true).then(async () => {
+    await calculateUnreadCounts();
 });
