@@ -54,12 +54,30 @@ if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
 }
 
-// ============ АВАТАРЫ (ОБНОВЛЯЮТСЯ ВЕЗДЕ) ============
+// ============ АВАТАРЫ (ЕДИНЫЙ ИСТОЧНИК) ============
 function getAvatarHtml(avatar, name) {
     if (avatar) {
-        return `<img src="${avatar}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
+        return `<img src="${avatar}?t=${Date.now()}" alt="${name}" onerror="this.style.display='none';this.parentElement.textContent='${(name||'?')[0].toUpperCase()}'">`;
     }
     return (name || '?')[0].toUpperCase();
+}
+
+// ============ ОБНОВЛЕНИЕ АВАТАРКИ В ШАПКЕ ============
+async function updateHeaderAvatar() {
+    try {
+        const resp = await fetch(`/api/profile/${userId}?user_id=${userId}&t=${Date.now()}`);
+        const user = await resp.json();
+        const headerAvatar = document.getElementById('header-avatar');
+        if (headerAvatar) {
+            headerAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
+        }
+        const usernameDisplay = document.getElementById('username-display');
+        if (usernameDisplay) {
+            usernameDisplay.textContent = user.display_name || user.username;
+        }
+    } catch (e) {
+        console.error('Ошибка обновления аватарки в шапке:', e);
+    }
 }
 
 // ============ СЧЁТЧИК НЕПРОЧИТАННЫХ ============
@@ -105,6 +123,9 @@ async function loadChats() {
                 <span class="chat-name">${g.name}</span>
             </div>
         `).join('');
+        
+        // Обновляем аватарку в шапке после загрузки чатов
+        updateHeaderAvatar();
     } catch (error) {
         console.error('Ошибка загрузки чатов:', error);
     }
@@ -132,7 +153,7 @@ function openChat(type, chatId, name, otherUserId = null) {
     loadMessages(chatId);
 }
 
-// ============ ЗАГРУЗКА СООБЩЕНИЙ (БЕЗ БЛИКОВ) ============
+// ============ ЗАГРУЗКА СООБЩЕНИЙ (С АВАТАРКАМИ) ============
 let lastMessageCount = 0;
 let lastMessageChatId = null;
 let lastMessagesHtml = '';
@@ -168,7 +189,6 @@ async function loadMessages(chatId) {
         lastMessageCount = messages.length;
         lastMessageChatId = chatId;
         
-        // === ЕСЛИ СООБЩЕНИЙ НЕТ ===
         if (messages.length === 0) {
             if (!isFirstLoad && messagesDiv.innerHTML.includes('Нет сообщений')) {
                 return;
@@ -178,7 +198,6 @@ async function loadMessages(chatId) {
             return;
         }
         
-        // === РЕНДЕРИНГ ===
         let html = '';
         messages.forEach(msg => {
             const isOwn = msg.sender_id == userId;
@@ -198,14 +217,21 @@ async function loadMessages(chatId) {
                 }
             }
             
+            // === АВАТАРКА В СООБЩЕНИЯХ (только для чужих) ===
+            const avatarHtml = !isOwn ? `<div class="chat-avatar" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${getAvatarHtml(msg.avatar, msg.display_name || msg.username)}</div>` : '';
+            
             html += `<div class="message ${isOwn ? 'own' : 'other'}">
-                <span class="msg-username">${msg.display_name || msg.username}</span>
-                ${content}
-                <span class="msg-time">${new Date(msg.timestamp).toLocaleTimeString()}</span>
+                <div style="display:flex;align-items:flex-start;gap:10px;">
+                    ${avatarHtml}
+                    <div>
+                        <span class="msg-username">${msg.display_name || msg.username}</span>
+                        ${content}
+                        <span class="msg-time">${new Date(msg.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                </div>
             </div>`;
         });
         
-        // Обновляем только если изменилось
         if (html !== lastMessagesHtml || isFirstLoad) {
             messagesDiv.innerHTML = html;
             lastMessagesHtml = html;
@@ -544,7 +570,6 @@ setInterval(function() {
     }
 }, 3000);
 
-// Обновляем чаты раз в 10 секунд для аватарок
 setInterval(function() {
     loadChats();
 }, 10000);
