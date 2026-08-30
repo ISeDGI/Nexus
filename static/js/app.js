@@ -138,9 +138,15 @@ async function calculateUnreadCounts() {
         const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
         const data = await resp.json();
         console.log('📊 Данные чатов:', data);
+        console.log('📊 private:', data.private);
+        console.log('📊 private.length:', data.private ? data.private.length : 'undefined');
         
+        // Проверяем наличие private
         if (!data.private || data.private.length === 0) {
-            console.log('📊 Нет личных чатов, пропускаем');
+            console.log('📊 Нет личных чатов, проверяем, может есть группы?');
+            if (data.groups && data.groups.length > 0) {
+                console.log('📊 Есть группы, но личных чатов нет. Нужно отправить сообщение, чтобы появился чат.');
+            }
             return;
         }
         
@@ -148,11 +154,14 @@ async function calculateUnreadCounts() {
         unreadCounts = {};
         
         // Считаем непрочитанные для каждого чата
+        console.log('📊 Обрабатываем', data.private.length, 'чатов');
         for (const chat of data.private) {
             const chatId = `user_${chat.id}`;
+            console.log('📊 Проверяем чат:', chatId);
             const messagesResp = await fetch(`/api/messages/${chatId}?user_id=${userId}&t=${Date.now()}`);
             if (messagesResp.ok) {
                 const messages = await messagesResp.json();
+                console.log('📊 Сообщений в чате', chatId, ':', messages.length);
                 const unread = messages.filter(msg => msg.sender_id != userId);
                 if (unread.length > 0) {
                     unreadCounts[chatId] = unread.length;
@@ -163,7 +172,12 @@ async function calculateUnreadCounts() {
         console.log('📊 Итоговые счётчики:', unreadCounts);
         
         // Принудительно перерисовываем чаты с бейджами
-        await loadChats(true);
+        if (Object.keys(unreadCounts).length > 0) {
+            console.log('📊 Есть непрочитанные, обновляем отображение');
+            await loadChats(true);
+        } else {
+            console.log('📊 Нет непрочитанных сообщений');
+        }
     } catch (error) {
         console.error('Ошибка подсчёта непрочитанных:', error);
     }
@@ -388,7 +402,7 @@ async function sendMessage() {
     }
 }
 
-// ============ ВСЕ ОСТАЛЬНЫЕ ФУНКЦИИ ============
+// ============ ФАЙЛЫ ============
 attachBtn.addEventListener('click', () => fileInput.click());
 
 fileInput.addEventListener('change', async function() {
@@ -427,6 +441,7 @@ fileInput.addEventListener('change', async function() {
     this.value = '';
 });
 
+// ============ ГОЛОСОВЫЕ ============
 let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
@@ -493,6 +508,7 @@ function stopRecording() {
     }
 }
 
+// ============ ПОИСК ============
 searchInput.addEventListener('input', async function() {
     const query = this.value.trim();
     if (query.length < 1) {
@@ -528,6 +544,7 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// ============ НАЧАТЬ ЛИЧНЫЙ ЧАТ ============
 async function startPrivateChat(otherUserId, username) {
     const chatId = 'user_' + otherUserId;
     openChat('private', chatId, username, otherUserId);
@@ -536,6 +553,7 @@ async function startPrivateChat(otherUserId, username) {
     await loadChats(true);
 }
 
+// ============ ГРУППЫ ============
 async function showCreateGroup() {
     document.getElementById('group-modal').style.display = 'flex';
     try {
@@ -581,6 +599,7 @@ function closeModal() {
     document.getElementById('group-name').value = '';
 }
 
+// ============ ПРОФИЛЬ ============
 async function showProfile() {
     const modal = document.getElementById('profile-modal');
     const content = document.getElementById('profile-content');
@@ -744,5 +763,7 @@ console.log('🚀 Запуск Nexus, userId:', userId);
 // ============ ПЕРВИЧНЫЙ ЗАПУСК ============
 // Сначала загружаем чаты, потом считаем непрочитанные
 loadChats(true).then(async () => {
+    // Даём время на загрузку чатов
+    await new Promise(resolve => setTimeout(resolve, 1000));
     await calculateUnreadCounts();
 });
