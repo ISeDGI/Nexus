@@ -91,7 +91,6 @@ async function loadMessages(chatId) {
             const isOwn = msg.sender_id == userId;
             let content = msg.text || '';
             
-            // Файлы
             if (msg.file_path) {
                 const ext = msg.file_path.split('.').pop().toLowerCase();
                 const fileUrl = msg.file_path;
@@ -131,8 +130,6 @@ async function sendMessage() {
     const text = msgInput.value.trim();
     if (!text) return;
     
-    console.log('✉️ Отправка:', text, 'в чат:', currentChatId);
-    
     try {
         const resp = await fetch(`/api/send?user_id=${userId}`, {
             method: 'POST',
@@ -144,7 +141,6 @@ async function sendMessage() {
             })
         });
         const data = await resp.json();
-        console.log('✉️ Ответ:', data);
         
         if (resp.ok) {
             msgInput.value = '';
@@ -184,9 +180,13 @@ fileInput.addEventListener('change', async function() {
             });
             if (resp.ok) {
                 loadMessages(currentChatId);
+            } else {
+                const data = await resp.json();
+                alert('Ошибка загрузки: ' + data.error);
             }
         } catch (error) {
             console.error('Ошибка загрузки файла:', error);
+            alert('Ошибка соединения');
         }
     }
     this.value = '';
@@ -364,7 +364,7 @@ async function showProfile() {
         
         content.innerHTML = `
             <div style="text-align:center;margin-bottom:20px;">
-                <div class="avatar-preview" onclick="document.getElementById('avatar-input').click()">
+                <div class="avatar-preview" onclick="document.getElementById('avatar-input').click()" style="width:80px;height:80px;border-radius:50%;margin:0 auto 15px;display:flex;align-items:center;justify-content:center;background:#25D366;color:white;font-size:32px;overflow:hidden;cursor:pointer;">
                     ${getAvatarHtml(user.avatar, user.display_name || user.username)}
                 </div>
                 <input type="file" id="avatar-input" style="display:none" accept="image/png,image/jpeg,image/gif,image/webp" onchange="uploadAvatar(this.files[0])">
@@ -372,13 +372,13 @@ async function showProfile() {
             </div>
             <div>
                 <label style="font-weight:500;display:block;margin-bottom:5px;">Имя</label>
-                <input type="text" id="profile-name" value="${user.display_name || ''}">
+                <input type="text" id="profile-name" value="${user.display_name || ''}" style="width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:10px;">
             </div>
             <div>
                 <label style="font-weight:500;display:block;margin-bottom:5px;">О себе</label>
-                <textarea id="profile-bio" style="resize:vertical;min-height:60px;">${user.bio || ''}</textarea>
+                <textarea id="profile-bio" style="width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:10px;resize:vertical;min-height:60px;">${user.bio || ''}</textarea>
             </div>
-            <button onclick="saveProfile()" style="width:100%;background:#25D366;color:white;margin-top:10px;">Сохранить</button>
+            <button onclick="saveProfile()" style="width:100%;padding:10px;background:#25D366;color:white;border:none;border-radius:10px;cursor:pointer;margin-top:10px;">Сохранить</button>
         `;
     } catch (error) {
         content.innerHTML = '<div style="color:red;">Ошибка загрузки профиля</div>';
