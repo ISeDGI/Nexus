@@ -16,21 +16,33 @@ const attachBtn = document.getElementById('attach-btn');
 const recordBtn = document.getElementById('record-btn');
 
 const userId = window.userId || 0;
-console.log('🚀 Приложение запущено, userId:', userId);
+console.log('🚀 Nexus запущен, userId:', userId);
 
-// ============ ЗВУК УВЕДОМЛЕНИЯ ============
+// ============ ПРИЯТНЫЙ ЗВУК УВЕДОМЛЕНИЯ ============
 function playNotificationSound() {
     try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        oscillator.frequency.value = 800;
-        oscillator.type = 'sine';
-        gainNode.gain.value = 0.3;
-        oscillator.start();
-        oscillator.stop(audioCtx.currentTime + 0.15);
+        const now = audioCtx.currentTime;
+        
+        // Два коротких мягких тона (как в Telegram)
+        const notes = [523, 659]; // C5, E5
+        
+        notes.forEach((freq, i) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.frequency.value = freq;
+            osc.type = 'sine';
+            
+            // Плавное затухание
+            gain.gain.setValueAtTime(0.15, now + i * 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.15);
+            
+            osc.start(now + i * 0.1);
+            osc.stop(now + i * 0.1 + 0.15);
+        });
     } catch (e) {
         console.log('Звук не поддерживается');
     }
@@ -39,13 +51,13 @@ function playNotificationSound() {
 // ============ УВЕДОМЛЕНИЕ В БРАУЗЕРЕ ============
 function showBrowserNotification(title, body) {
     if (Notification.permission === 'granted') {
-        new Notification(title, { body, icon: '/static/icons/icon-192.png' });
-    } else if (Notification.permission === 'default') {
-        Notification.requestPermission();
+        new Notification('💬 Nexus', { 
+            body: `${title}: ${body}`,
+            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">💬</text></svg>'
+        });
     }
 }
 
-// Запрашиваем разрешение на уведомления
 if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
 }
@@ -58,30 +70,51 @@ function getAvatarHtml(avatar, name) {
     return (name || '?')[0].toUpperCase();
 }
 
-// ============ ЗАГРУЗКА ЧАТОВ (С ПРИНУДИТЕЛЬНЫМ ОБНОВЛЕНИЕМ АВАТАРОК) ============
-let lastChatsUpdate = 0;
+// ============ СЧЁТЧИК НЕПРОЧИТАННЫХ ============
+let unreadCounts = {};
 
+function updateUnreadBadge(chatId, count) {
+    const badge = document.querySelector(`.chat-item[data-chat-id="${chatId}"] .unread-badge`);
+    if (badge) {
+        if (count > 0) {
+            badge.textContent = count > 99 ? '99+' : count;
+            badge.style.display = 'inline-block';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+    // Обновляем общий счётчик в заголовке
+    const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+    document.title = totalUnread > 0 ? `(${totalUnread}) Nexus` : 'Nexus';
+}
+
+// ============ ЗАГРУЗКА ЧАТОВ ============
 async function loadChats() {
     try {
         const resp = await fetch(`/api/chats?user_id=${userId}&t=${Date.now()}`);
         const data = await resp.json();
         console.log('Чаты загружены:', data);
         
-        privateChatsDiv.innerHTML = data.private.map(p => `
-            <div class="chat-item" onclick="openChat('private', 'user_${p.id}', '${p.display_name || p.username}', ${p.id})">
-                <div class="chat-avatar">${getAvatarHtml(p.avatar, p.display_name || p.username)}</div>
-                ${p.display_name || p.username}
-            </div>
-        `).join('');
+        privateChatsDiv.innerHTML = data.private.map(p => {
+            const chatId = `user_${p.id}`;
+            const unread = unreadCounts[chatId] || 0;
+            return `
+                <div class="chat-item" data-chat-id="${chatId}" onclick="openChat('private', '${chatId}', '${p.display_name || p.username}', ${p.id})">
+                    <div class="chat-avatar">${getAvatarHtml(p.avatar, p.display_name || p.username)}</div>
+                    <div style="flex:1;display:flex;justify-content:space-between;align-items:center;">
+                        <span class="chat-name">${p.display_name || p.username}</span>
+                        ${unread > 0 ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
         
         groupChatsDiv.innerHTML = data.groups.map(g => `
             <div class="chat-item" onclick="openChat('group', 'group_${g.id}', '${g.name}')">
                 <div class="chat-avatar">👥</div>
-                ${g.name}
+                <span class="chat-name">${g.name}</span>
             </div>
         `).join('');
-        
-        lastChatsUpdate = Date.now();
     } catch (error) {
         console.error('Ошибка загрузки чатов:', error);
     }
@@ -95,6 +128,12 @@ function openChat(type, chatId, name, otherUserId = null) {
     currentChatName = name;
     currentChatUserId = otherUserId;
     currentChatNameSpan.textContent = name;
+    
+    // Сбрасываем счётчик непрочитанных для этого чата
+    if (unreadCounts[chatId]) {
+        unreadCounts[chatId] = 0;
+        updateUnreadBadge(chatId, 0);
+    }
     
     document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
     if (event && event.target) {
@@ -120,16 +159,25 @@ async function loadMessages(chatId) {
         const messages = await resp.json();
         console.log('📨 Получено сообщений:', messages.length);
         
-        // === УВЕДОМЛЕНИЕ О НОВЫХ СООБЩЕНИЯХ ===
-        if (lastMessageChatId === chatId && messages.length > lastMessageCount && lastMessageCount > 0) {
+        // === СЧЁТЧИК НЕПРОЧИТАННЫХ ===
+        if (lastMessageChatId === chatId && messages.length > lastMessageCount) {
             const newMessages = messages.slice(lastMessageCount);
-            const lastMsg = newMessages[newMessages.length - 1];
-            if (lastMsg && lastMsg.sender_id != userId) {
-                playNotificationSound();
-                showBrowserNotification(
-                    `${lastMsg.display_name || lastMsg.username}`,
-                    lastMsg.text || 'Новое сообщение'
-                );
+            const unread = newMessages.filter(msg => msg.sender_id != userId);
+            if (unread.length > 0) {
+                // Если чат не открыт — увеличиваем счётчик
+                if (currentChatId !== chatId) {
+                    unreadCounts[chatId] = (unreadCounts[chatId] || 0) + unread.length;
+                    updateUnreadBadge(chatId, unreadCounts[chatId]);
+                }
+                // Уведомление
+                const lastMsg = unread[unread.length - 1];
+                if (lastMsg.sender_id != userId) {
+                    playNotificationSound();
+                    showBrowserNotification(
+                        lastMsg.display_name || lastMsg.username,
+                        lastMsg.text || '📎 Файл'
+                    );
+                }
             }
         }
         lastMessageCount = messages.length;
@@ -177,7 +225,7 @@ async function loadMessages(chatId) {
     }
 }
 
-// ============ ОТПРАВКА СООБЩЕНИЯ ============
+// ============ ОТПРАВКА ============
 async function sendMessage() {
     if (!currentChatId) {
         alert('Выберите чат');
@@ -456,7 +504,6 @@ async function uploadAvatar(file) {
         const data = await resp.json();
         if (resp.ok) {
             alert('Аватар обновлён!');
-            // Принудительно обновляем чаты у всех пользователей
             await loadChats();
             closeProfile();
         } else {
@@ -511,10 +558,9 @@ setInterval(function() {
     if (currentChatId) {
         loadMessages(currentChatId);
     }
-    // Обновляем список чатов каждые 10 секунд (для аватарок)
     loadChats();
 }, 5000);
 
 // ============ ЗАПУСК ============
-console.log('🚀 Запуск приложения, userId:', userId);
+console.log('🚀 Запуск Nexus, userId:', userId);
 loadChats();
