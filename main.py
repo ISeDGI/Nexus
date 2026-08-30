@@ -125,10 +125,27 @@ def send_message():
         print(f"📨 Сообщение: от {user_id}, в чат {chat_id}, текст: {text}")
         
         db = get_db()
+        
+        # === СОХРАНЯЕМ В ОБА ЧАТА ===
+        # 1. В тот чат, который указан
         db.execute(
             'INSERT INTO messages (sender_id, chat_id, chat_type, text) VALUES (?, ?, ?, ?)',
             (user_id, chat_id, chat_type, text)
         )
+        
+        # 2. В обратный чат (для другого пользователя)
+        if chat_type == 'private' and chat_id.startswith('user_'):
+            # Получаем ID собеседника из chat_id
+            other_user_id = chat_id.replace('user_', '')
+            # Создаём обратный chat_id
+            reverse_chat_id = f'user_{user_id}'
+            # Сохраняем копию в обратный чат
+            db.execute(
+                'INSERT INTO messages (sender_id, chat_id, chat_type, text) VALUES (?, ?, ?, ?)',
+                (user_id, reverse_chat_id, chat_type, text)
+            )
+            print(f"📨 Копия сохранена в чат: {reverse_chat_id}")
+        
         db.commit()
         db.close()
         print("✅ Сообщение сохранено")

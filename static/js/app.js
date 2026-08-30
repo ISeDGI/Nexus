@@ -40,7 +40,7 @@ async function loadChats() {
 
 // Открыть чат
 function openChat(type, chatId, name, otherUserId = null) {
-    console.log('Открываем чат:', chatId, name);
+    console.log('📂 Открываем чат:', chatId, name);
     currentChatId = chatId;
     currentChatType = type;
     currentChatName = name;
@@ -58,6 +58,7 @@ function openChat(type, chatId, name, otherUserId = null) {
 
 // Загрузить сообщения
 async function loadMessages(chatId) {
+    console.log('📨 Загружаем сообщения для:', chatId);
     try {
         const resp = await fetch(`/api/messages/${chatId}?user_id=${userId}`);
         if (!resp.ok) {
@@ -65,25 +66,28 @@ async function loadMessages(chatId) {
             return;
         }
         const messages = await resp.json();
-        console.log('Сообщения:', messages);
+        console.log('📨 Получено сообщений:', messages.length);
+        console.log('📨 Сообщения:', messages);
         
         if (messages.length === 0) {
             messagesDiv.innerHTML = '<div style="color:#999;text-align:center;padding:20px;">Нет сообщений</div>';
             return;
         }
         
-        messagesDiv.innerHTML = messages.map(msg => {
+        let html = '';
+        messages.forEach(msg => {
             const isOwn = msg.sender_id == userId;
-            return `<div class="message ${isOwn ? 'own' : 'other'}">
+            html += `<div class="message ${isOwn ? 'own' : 'other'}">
                 <span class="msg-username">${msg.display_name || msg.username}</span>
                 ${msg.text}
                 <span class="msg-time">${new Date(msg.timestamp).toLocaleTimeString()}</span>
             </div>`;
-        }).join('');
-        
+        });
+        messagesDiv.innerHTML = html;
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        console.log('✅ Сообщения отображены, всего:', messages.length);
     } catch (error) {
-        console.error('Ошибка загрузки сообщений:', error);
+        console.error('❌ Ошибка загрузки сообщений:', error);
         messagesDiv.innerHTML = '<div style="color:red;text-align:center;padding:20px;">Ошибка загрузки</div>';
     }
 }
@@ -98,6 +102,8 @@ async function sendMessage() {
     const text = msgInput.value.trim();
     if (!text) return;
     
+    console.log('✉️ Отправка:', text, 'в чат:', currentChatId);
+    
     try {
         const resp = await fetch(`/api/send?user_id=${userId}`, {
             method: 'POST',
@@ -109,7 +115,7 @@ async function sendMessage() {
             })
         });
         const data = await resp.json();
-        console.log('Ответ отправки:', data);
+        console.log('✉️ Ответ:', data);
         
         if (resp.ok) {
             msgInput.value = '';
@@ -118,7 +124,7 @@ async function sendMessage() {
             alert('Ошибка отправки: ' + data.error);
         }
     } catch (error) {
-        console.error('Ошибка отправки:', error);
+        console.error('❌ Ошибка отправки:', error);
         alert('Ошибка соединения');
     }
 }
@@ -226,12 +232,14 @@ msgInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') sendMessage();
 });
 
-// Автообновление каждые 3 секунды
+// Автообновление каждые 2 секунды
 setInterval(function() {
     if (currentChatId) {
+        console.log('🔄 Автообновление чата:', currentChatId);
         loadMessages(currentChatId);
     }
-}, 3000);
+}, 2000);
 
 // Запуск
+console.log('🚀 Запуск приложения, userId:', userId);
 loadChats();

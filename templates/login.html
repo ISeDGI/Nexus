@@ -91,7 +91,6 @@
                 console.log('Ответ сервера:', data);
                 if (data.status === 'ok' && data.user_id) {
                     console.log('✅ Успех! user_id:', data.user_id);
-                    // Перенаправляем с user_id в URL
                     window.location.href = '/?user_id=' + data.user_id;
                 } else {
                     errorEl.textContent = data.error || 'Неверный логин или пароль';
