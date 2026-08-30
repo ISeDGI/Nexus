@@ -13,6 +13,7 @@ const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
 const currentChatNameSpan = document.getElementById('current-chat-name');
 const chatHeaderAvatar = document.getElementById('chat-avatar');
+const headerAvatar = document.getElementById('header-avatar');
 const fileInput = document.getElementById('file-input');
 const attachBtn = document.getElementById('attach-btn');
 const recordBtn = document.getElementById('record-btn');
@@ -71,7 +72,6 @@ async function updateHeaderAvatar() {
         const user = await resp.json();
         console.log('📸 Данные пользователя:', user);
         
-        const headerAvatar = document.getElementById('header-avatar');
         if (headerAvatar) {
             headerAvatar.innerHTML = getAvatarHtml(user.avatar, user.display_name || user.username);
             console.log('✅ Аватарка в шапке обновлена');
@@ -175,8 +175,9 @@ async function loadChats() {
             `;
         }).join('');
         
-        // ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ АВАТАРКУ В ШАПКЕ
+        // ===== ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ АВАТАРКУ В ШАПКЕ =====
         await updateHeaderAvatar();
+        
     } catch (error) {
         console.error('Ошибка загрузки чатов:', error);
     }
