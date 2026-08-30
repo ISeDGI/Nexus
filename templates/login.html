@@ -3,113 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Вход - Мой Чат</title>
+    <title>Вход</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, sans-serif;
-            background: #f5f5f5;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        #app {
-            background: white;
-            padding: 40px 30px;
-            border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 400px;
-        }
-        h1 {
-            text-align: center;
-            margin-bottom: 30px;
-            color: #007AFF;
-        }
-        .tab {
-            display: flex;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #eee;
-        }
-        .tab button {
-            flex: 1;
-            padding: 10px;
-            border: none;
-            background: none;
-            font-size: 16px;
-            cursor: pointer;
-            color: #999;
-            transition: 0.3s;
-        }
-        .tab button.active {
-            color: #007AFF;
-            border-bottom: 2px solid #007AFF;
-        }
-        .form {
-            display: none;
-        }
-        .form.active {
-            display: block;
-        }
-        input {
-            width: 100%;
-            padding: 12px 15px;
-            margin-bottom: 15px;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            font-size: 16px;
-            outline: none;
-        }
+        body { font-family: -apple-system, sans-serif; background: #f5f5f5; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        #app { background: white; padding: 40px 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        h1 { text-align: center; margin-bottom: 30px; color: #007AFF; }
+        .tab { display: flex; margin-bottom: 20px; border-bottom: 2px solid #eee; }
+        .tab button { flex: 1; padding: 10px; border: none; background: none; font-size: 16px; cursor: pointer; color: #999; transition: 0.3s; }
+        .tab button.active { color: #007AFF; border-bottom: 2px solid #007AFF; }
+        .form { display: none; }
+        .form.active { display: block; }
+        input { width: 100%; padding: 12px 15px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; outline: none; }
         input:focus { border-color: #007AFF; }
-        button[type="submit"] {
-            width: 100%;
-            padding: 12px;
-            background: #007AFF;
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-        button[type="submit"]:hover { background: #0055b3; }
-        .error {
-            color: red;
-            text-align: center;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
+        button { width: 100%; padding: 12px; background: #007AFF; color: white; border: none; border-radius: 10px; font-size: 16px; cursor: pointer; }
+        button:hover { background: #0055b3; }
+        .error { color: red; text-align: center; margin-bottom: 10px; font-size: 14px; }
+        .success { color: green; text-align: center; margin-bottom: 10px; font-size: 14px; }
     </style>
 </head>
 <body>
     <div id="app">
-        <h1>💬 Мой Чат</h1>
+        <h1>💬 Чат</h1>
         <div class="tab">
             <button class="active" onclick="switchTab('login')">Вход</button>
             <button onclick="switchTab('register')">Регистрация</button>
         </div>
-        
         <div id="login-form" class="form active">
             <div id="login-error" class="error"></div>
             <input type="text" id="login-username" placeholder="Никнейм">
             <input type="password" id="login-password" placeholder="Пароль">
-            <button type="submit" onclick="login()">Войти</button>
+            <button onclick="login()">Войти</button>
         </div>
-        
         <div id="register-form" class="form">
             <div id="register-error" class="error"></div>
-            <input type="text" id="register-username" placeholder="Придумайте никнейм">
-            <input type="text" id="register-displayname" placeholder="Как вас называть (опционально)">
+            <div id="register-success" class="success"></div>
+            <input type="text" id="register-username" placeholder="Никнейм">
+            <input type="text" id="register-displayname" placeholder="Имя (опционально)">
             <input type="password" id="register-password" placeholder="Пароль">
-            <button type="submit" onclick="register()">Зарегистрироваться</button>
+            <button onclick="register()">Зарегистрироваться</button>
         </div>
     </div>
-
     <script>
         function switchTab(tab) {
             document.querySelectorAll('.form').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab button').forEach(el => el.classList.remove('active'));
-            
             if (tab === 'login') {
                 document.getElementById('login-form').classList.add('active');
                 document.querySelector('.tab button:first-child').classList.add('active');
@@ -117,6 +55,10 @@
                 document.getElementById('register-form').classList.add('active');
                 document.querySelector('.tab button:last-child').classList.add('active');
             }
+            // Очищаем сообщения
+            document.getElementById('login-error').textContent = '';
+            document.getElementById('register-error').textContent = '';
+            document.getElementById('register-success').textContent = '';
         }
 
         async function login() {
@@ -124,17 +66,33 @@
             const password = document.getElementById('login-password').value;
             const errorEl = document.getElementById('login-error');
             
-            const resp = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
+            if (!username || !password) {
+                errorEl.textContent = 'Заполните все поля';
+                return;
+            }
             
-            if (resp.ok) {
-                window.location.href = '/';
-            } else {
+            errorEl.textContent = '';
+            console.log('🔑 Пытаемся войти:', username);
+            
+            try {
+                const resp = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
                 const data = await resp.json();
-                errorEl.textContent = data.error || 'Ошибка входа';
+                console.log('📨 Ответ сервера:', data);
+                
+                if (resp.ok) {
+                    console.log('✅ Вход успешен! Перенаправляем...');
+                    window.location.href = '/';
+                } else {
+                    errorEl.textContent = data.error || 'Неверный логин или пароль';
+                }
+            } catch (e) {
+                console.error('❌ Ошибка:', e);
+                errorEl.textContent = 'Ошибка соединения с сервером';
             }
         }
 
@@ -143,24 +101,41 @@
             const display_name = document.getElementById('register-displayname').value;
             const password = document.getElementById('register-password').value;
             const errorEl = document.getElementById('register-error');
+            const successEl = document.getElementById('register-success');
             
-            const resp = await fetch('/api/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password, display_name })
-            });
+            if (!username || !password) {
+                errorEl.textContent = 'Заполните никнейм и пароль';
+                return;
+            }
             
-            if (resp.ok) {
-                alert('Регистрация успешна! Теперь войдите.');
-                switchTab('login');
-                document.getElementById('login-username').value = username;
-            } else {
+            errorEl.textContent = '';
+            successEl.textContent = '';
+            console.log('📝 Регистрируем:', username);
+            
+            try {
+                const resp = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, display_name })
+                });
+                
                 const data = await resp.json();
-                errorEl.textContent = data.error || 'Ошибка регистрации';
+                console.log('📨 Ответ:', data);
+                
+                if (resp.ok) {
+                    successEl.textContent = '✅ Регистрация успешна! Теперь войдите.';
+                    document.getElementById('login-username').value = username;
+                    setTimeout(() => switchTab('login'), 1500);
+                } else {
+                    errorEl.textContent = data.error || 'Ошибка регистрации';
+                }
+            } catch (e) {
+                console.error('❌ Ошибка:', e);
+                errorEl.textContent = 'Ошибка соединения с сервером';
             }
         }
 
-        // Enter для входа
+        // Enter для отправки
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 const activeForm = document.querySelector('.form.active');
