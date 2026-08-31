@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS messages (
     chat_type TEXT NOT NULL,
     text TEXT,
     file_path TEXT,
+    status TEXT DEFAULT 'sent',
+    is_read INTEGER DEFAULT 0,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (sender_id) REFERENCES users(id)
 )
@@ -81,9 +83,22 @@ CREATE TABLE IF NOT EXISTS group_members (
 )
 ''')
 
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS read_receipts (
+    message_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (message_id, user_id),
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)
+''')
+
 conn.commit()
 conn.close()
 print("✅ Таблицы проверены/созданы")
+
+# ========== МАРШРУТЫ ==========
 
 @app.route('/')
 def index():
@@ -103,6 +118,8 @@ def index():
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+# ========== АВТОРИЗАЦИЯ ==========
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -176,6 +193,8 @@ def get_users():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# ========== ПРОФИЛЬ ==========
+
 @app.route('/api/profile/<int:user_id>', methods=['GET'])
 def get_profile(user_id):
     try:
@@ -246,12 +265,10 @@ def change_password():
             db.close()
             return jsonify({'error': 'Пользователь не найден'}), 404
         
-        # Проверяем старый пароль
         if user['password'] != hash_password(old_password):
             db.close()
             return jsonify({'error': 'Неверный старый пароль'}), 401
         
-        # Обновляем пароль
         db.execute(
             'UPDATE users SET password = ? WHERE id = ?',
             (hash_password(new_password), user_id)
@@ -299,6 +316,8 @@ def upload_avatar():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# ========== СООБЩЕНИЯ ==========
+
 @app.route('/api/send', methods=['POST'])
 def send_message():
     try:
@@ -310,26 +329,32 @@ def send_message():
         chat_id = data.get('chat_id')
         chat_type = data.get('chat_type', 'private')
         text = data.get('text', '')
+        file_path = data.get('file_path')
         
         if not chat_id:
             return jsonify({'error': 'chat_id обязателен'}), 400
         
         db = get_db()
-        db.execute(
-            'INSERT INTO messages (sender_id, chat_id, chat_type, text) VALUES (?, ?, ?, ?)',
-            (user_id, chat_id, chat_type, text)
-        )
         
+        cursor = db.execute('''
+            INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path, status)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (user_id, chat_id, chat_type, text, file_path, 'sent'))
+        
+        message_id = cursor.lastrowid
+        
+        # Для приватных чатов сохраняем зеркальное сообщение
         if chat_type == 'private' and chat_id.startswith('user_'):
             reverse_chat_id = f'user_{user_id}'
-            db.execute(
-                'INSERT INTO messages (sender_id, chat_id, chat_type, text) VALUES (?, ?, ?, ?)',
-                (user_id, reverse_chat_id, chat_type, text)
-            )
+            db.execute('''
+                INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path, status)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (user_id, reverse_chat_id, chat_type, text, file_path, 'sent'))
         
         db.commit()
         db.close()
-        return jsonify({'status': 'ok'})
+        
+        return jsonify({'status': 'ok', 'message_id': message_id})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -359,17 +384,17 @@ def upload_file():
         file.save(filepath)
         
         db = get_db()
-        db.execute(
-            'INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path) VALUES (?, ?, ?, ?, ?)',
-            (user_id, chat_id, chat_type, f"/uploads/{unique_name}", f"/uploads/{unique_name}")
-        )
+        db.execute('''
+            INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path, status)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (user_id, chat_id, chat_type, f"/uploads/{unique_name}", f"/uploads/{unique_name}", 'sent'))
         
         if chat_type == 'private' and chat_id.startswith('user_'):
             reverse_chat_id = f'user_{user_id}'
-            db.execute(
-                'INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path) VALUES (?, ?, ?, ?, ?)',
-                (user_id, reverse_chat_id, chat_type, f"/uploads/{unique_name}", f"/uploads/{unique_name}")
-            )
+            db.execute('''
+                INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path, status)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (user_id, reverse_chat_id, chat_type, f"/uploads/{unique_name}", f"/uploads/{unique_name}", 'sent'))
         
         db.commit()
         db.close()
@@ -386,8 +411,10 @@ def get_messages(chat_id):
         
         db = get_db()
         messages = db.execute('''
-            SELECT m.id, m.sender_id, m.chat_id, m.chat_type, m.text, m.file_path, m.timestamp,
-                   u.username, u.display_name, u.avatar
+            SELECT m.id, m.sender_id, m.chat_id, m.chat_type, m.text, m.file_path, 
+                   m.timestamp, m.status, m.is_read,
+                   u.username, u.display_name, u.avatar,
+                   (SELECT COUNT(*) FROM read_receipts WHERE message_id = m.id) as read_count
             FROM messages m
             JOIN users u ON m.sender_id = u.id
             WHERE m.chat_id = ?
@@ -407,13 +434,100 @@ def get_messages(chat_id):
                 'timestamp': msg['timestamp'],
                 'username': msg['username'],
                 'display_name': msg['display_name'],
-                'avatar': msg['avatar']
+                'avatar': msg['avatar'],
+                'status': msg['status'] or 'sent',
+                'is_read': bool(msg['is_read']),
+                'read_count': msg['read_count'] or 0
             })
         
         return jsonify(result)
     except Exception as e:
         print(f"❌ Ошибка в get_messages: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+# ========== СТАТУСЫ СООБЩЕНИЙ ==========
+
+@app.route('/api/message/status/<int:message_id>', methods=['GET'])
+def get_message_status(message_id):
+    try:
+        db = get_db()
+        msg = db.execute('''
+            SELECT status, is_read, 
+                   (SELECT COUNT(*) FROM read_receipts WHERE message_id = messages.id) as read_count
+            FROM messages WHERE id = ?
+        ''', (message_id,)).fetchone()
+        db.close()
+        
+        if not msg:
+            return jsonify({'error': 'Сообщение не найдено'}), 404
+        
+        return jsonify({
+            'status': msg['status'],
+            'is_read': bool(msg['is_read']),
+            'read_count': msg['read_count']
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/messages/<int:message_id>/read', methods=['POST'])
+def mark_message_read(message_id):
+    try:
+        user_id = request.args.get('user_id') or session.get('user_id')
+        if not user_id:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        db = get_db()
+        
+        db.execute('''
+            INSERT OR IGNORE INTO read_receipts (message_id, user_id)
+            VALUES (?, ?)
+        ''', (message_id, user_id))
+        
+        db.execute('''
+            UPDATE messages SET 
+                status = 'read',
+                is_read = 1
+            WHERE id = ?
+        ''', (message_id,))
+        
+        db.commit()
+        db.close()
+        
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/messages/<int:message_id>', methods=['DELETE'])
+def delete_message_by_id(message_id):
+    try:
+        user_id = request.args.get('user_id') or session.get('user_id')
+        if not user_id:
+            return jsonify({'error': 'Не авторизован'}), 401
+        
+        db = get_db()
+        
+        msg = db.execute(
+            'SELECT sender_id FROM messages WHERE id = ?',
+            (message_id,)
+        ).fetchone()
+        
+        if not msg:
+            db.close()
+            return jsonify({'error': 'Сообщение не найдено'}), 404
+        
+        if msg['sender_id'] != user_id:
+            db.close()
+            return jsonify({'error': 'Нельзя удалить чужое сообщение'}), 403
+        
+        db.execute('DELETE FROM messages WHERE id = ?', (message_id,))
+        db.commit()
+        db.close()
+        
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ========== ЧАТЫ ==========
 
 @app.route('/api/chats', methods=['GET'])
 def get_chats():
@@ -465,6 +579,8 @@ def get_chats():
     except Exception as e:
         print(f"❌ Ошибка в get_chats: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+# ========== ГРУППЫ ==========
 
 @app.route('/api/create_group', methods=['POST'])
 def create_group():
