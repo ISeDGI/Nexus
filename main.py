@@ -29,11 +29,12 @@ def hash_password(password):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# ========== СОЗДАНИЕ ТАБЛИЦ (ЕСЛИ ИХ НЕТ) ==========
+# ========== СОЗДАНИЕ ТАБЛИЦ ==========
 os.makedirs('database', exist_ok=True)
 conn = sqlite3.connect('database/data_source.db')
 cursor = conn.cursor()
 
+# Таблица пользователей
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS users (
 )
 ''')
 
+# Таблица сообщений (с полями status и is_read!)
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,6 +63,7 @@ CREATE TABLE IF NOT EXISTS messages (
 )
 ''')
 
+# Таблица групп
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,6 +75,7 @@ CREATE TABLE IF NOT EXISTS groups (
 )
 ''')
 
+# Таблица участников групп
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS group_members (
     group_id INTEGER NOT NULL,
@@ -83,6 +87,7 @@ CREATE TABLE IF NOT EXISTS group_members (
 )
 ''')
 
+# Таблица для отслеживания прочтения
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS read_receipts (
     message_id INTEGER NOT NULL,
@@ -316,7 +321,7 @@ def upload_avatar():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ========== СООБЩЕНИЯ ==========
+# ========== СООБЩЕНИЯ (ОБНОВЛЕННЫЕ) ==========
 
 @app.route('/api/send', methods=['POST'])
 def send_message():
@@ -336,10 +341,11 @@ def send_message():
         
         db = get_db()
         
+        # Сохраняем сообщение с статусом 'sent'
         cursor = db.execute('''
-            INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, chat_id, chat_type, text, file_path, 'sent'))
+            INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path, status, is_read)
+            VALUES (?, ?, ?, ?, ?, 'sent', 0)
+        ''', (user_id, chat_id, chat_type, text, file_path))
         
         message_id = cursor.lastrowid
         
@@ -347,9 +353,9 @@ def send_message():
         if chat_type == 'private' and chat_id.startswith('user_'):
             reverse_chat_id = f'user_{user_id}'
             db.execute('''
-                INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path, status)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (user_id, reverse_chat_id, chat_type, text, file_path, 'sent'))
+                INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path, status, is_read)
+                VALUES (?, ?, ?, ?, ?, 'sent', 0)
+            ''', (user_id, reverse_chat_id, chat_type, text, file_path))
         
         db.commit()
         db.close()
@@ -385,16 +391,16 @@ def upload_file():
         
         db = get_db()
         db.execute('''
-            INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, chat_id, chat_type, f"/uploads/{unique_name}", f"/uploads/{unique_name}", 'sent'))
+            INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path, status, is_read)
+            VALUES (?, ?, ?, ?, ?, 'sent', 0)
+        ''', (user_id, chat_id, chat_type, f"/uploads/{unique_name}", f"/uploads/{unique_name}"))
         
         if chat_type == 'private' and chat_id.startswith('user_'):
             reverse_chat_id = f'user_{user_id}'
             db.execute('''
-                INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path, status)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (user_id, reverse_chat_id, chat_type, f"/uploads/{unique_name}", f"/uploads/{unique_name}", 'sent'))
+                INSERT INTO messages (sender_id, chat_id, chat_type, text, file_path, status, is_read)
+                VALUES (?, ?, ?, ?, ?, 'sent', 0)
+            ''', (user_id, reverse_chat_id, chat_type, f"/uploads/{unique_name}", f"/uploads/{unique_name}"))
         
         db.commit()
         db.close()
@@ -445,29 +451,7 @@ def get_messages(chat_id):
         print(f"❌ Ошибка в get_messages: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-# ========== СТАТУСЫ СООБЩЕНИЙ ==========
-
-@app.route('/api/message/status/<int:message_id>', methods=['GET'])
-def get_message_status(message_id):
-    try:
-        db = get_db()
-        msg = db.execute('''
-            SELECT status, is_read, 
-                   (SELECT COUNT(*) FROM read_receipts WHERE message_id = messages.id) as read_count
-            FROM messages WHERE id = ?
-        ''', (message_id,)).fetchone()
-        db.close()
-        
-        if not msg:
-            return jsonify({'error': 'Сообщение не найдено'}), 404
-        
-        return jsonify({
-            'status': msg['status'],
-            'is_read': bool(msg['is_read']),
-            'read_count': msg['read_count']
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+# ========== СТАТУСЫ И УДАЛЕНИЕ ==========
 
 @app.route('/api/messages/<int:message_id>/read', methods=['POST'])
 def mark_message_read(message_id):
@@ -478,11 +462,13 @@ def mark_message_read(message_id):
         
         db = get_db()
         
+        # Добавляем запись о прочтении
         db.execute('''
             INSERT OR IGNORE INTO read_receipts (message_id, user_id)
             VALUES (?, ?)
         ''', (message_id, user_id))
         
+        # Обновляем статус сообщения
         db.execute('''
             UPDATE messages SET 
                 status = 'read',
@@ -538,6 +524,7 @@ def get_chats():
         
         db = get_db()
         
+        # Получаем уникальных собеседников для личных чатов
         private_chats = db.execute('''
             SELECT DISTINCT 
                 CASE 
