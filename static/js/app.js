@@ -1,5 +1,5 @@
 // ========================================
-// NEXUS — Полный клиентский JavaScript
+// NEXUS — ПОЛНЫЙ КЛИЕНТСКИЙ JAVASCRIPT
 // ========================================
 
 // ===== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =====
@@ -58,7 +58,7 @@ function setupEventListeners() {
     // Закрытие меню при клике вне
     document.addEventListener('click', () => {
         const menu = document.getElementById('message-menu');
-        if (menu) menu.classList.remove('active');
+        if (menu) menu.remove();
     });
 }
 
@@ -714,7 +714,6 @@ function closeModal() {
 
 // ===== ПРОФИЛЬ =====
 function showProfile() {
-    // Заглушка — открываем профиль пользователя
     showUserProfile(window.userId);
 }
 
@@ -854,7 +853,98 @@ function scrollToBottom() {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-// Экспортируем функции для inline onclick
+// ==========================================
+// ПРИНУДИТЕЛЬНЫЕ ГАЛОЧКИ (только для своих сообщений)
+// ==========================================
+
+// Функция добавления галочек
+function addCheckmarksToOwnMessages() {
+    // Ищем только свои сообщения (.own)
+    document.querySelectorAll('.message.own').forEach(msg => {
+        const timeSpan = msg.querySelector('.msg-time');
+        if (!timeSpan) return;
+        
+        // Проверяем, есть ли уже галочки
+        if (timeSpan.querySelector('.status-icons')) return;
+        
+        // Создаём контейнер для галочек
+        const statusHtml = document.createElement('span');
+        statusHtml.className = 'status-icons';
+        statusHtml.style.cssText = 'display:inline-flex;align-items:center;gap:1px;margin-left:4px;';
+        
+        // Добавляем 2 синие галочки
+        for (let i = 0; i < 2; i++) {
+            const check = document.createElement('span');
+            check.className = 'check';
+            check.style.cssText = 'font-size:12px;color:#4FC3F7;';
+            check.textContent = '✓';
+            statusHtml.appendChild(check);
+        }
+        
+        timeSpan.appendChild(statusHtml);
+    });
+}
+
+// Перехватываем добавление новых сообщений
+(function() {
+    // Сохраняем оригинальный метод appendChild для контейнера сообщений
+    const container = document.getElementById('messages');
+    if (!container) return;
+    
+    const originalAppend = container.appendChild;
+    
+    container.appendChild = function(el) {
+        // Вызываем оригинальный метод
+        const result = originalAppend.call(this, el);
+        
+        // Если это сообщение — добавляем галочки
+        if (el.classList && el.classList.contains('message')) {
+            // Ждём немного, чтобы DOM обновился
+            setTimeout(() => {
+                // Добавляем галочки только к своим сообщениям
+                if (el.classList.contains('own')) {
+                    const timeSpan = el.querySelector('.msg-time');
+                    if (timeSpan && !timeSpan.querySelector('.status-icons')) {
+                        const statusHtml = document.createElement('span');
+                        statusHtml.className = 'status-icons';
+                        statusHtml.style.cssText = 'display:inline-flex;align-items:center;gap:1px;margin-left:4px;';
+                        
+                        for (let i = 0; i < 2; i++) {
+                            const check = document.createElement('span');
+                            check.className = 'check';
+                            check.style.cssText = 'font-size:12px;color:#4FC3F7;';
+                            check.textContent = '✓';
+                            statusHtml.appendChild(check);
+                        }
+                        
+                        timeSpan.appendChild(statusHtml);
+                    }
+                }
+            }, 50);
+        }
+        
+        return result;
+    };
+    
+    console.log('✅ Галочки для своих сообщений включены!');
+})();
+
+// Запускаем для уже существующих сообщений
+setTimeout(() => {
+    addCheckmarksToOwnMessages();
+}, 100);
+
+// Периодически проверяем новые сообщения
+setInterval(() => {
+    addCheckmarksToOwnMessages();
+}, 2000);
+
+console.log('✅ Система галочек для своих сообщений активирована!');
+
+// ==========================================
+// ЭКСПОРТ ФУНКЦИЙ ДЛЯ INLINE ONCLICK
+// ==========================================
+
 window.showCreateGroup = showCreateGroup;
 window.createGroup = createGroup;
 window.closeModal = closeModal;
@@ -868,4 +958,4 @@ window.selectChat = selectChat;
 window.loadChats = loadChats;
 window.sendMessage = sendMessage;
 
-console.log('✅ Nexus app.js загружен');
+console.log('✅ Nexus app.js полностью загружен!');
